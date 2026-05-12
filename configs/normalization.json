@@ -1,0 +1,19 @@
+{
+  "strategy": "max_volume",
+  "formula": "x_normalized = x / max(abs(reconstruction_rss))",
+  "scope": "per-volume (max sobre todas as fatias do mesmo volume)",
+  "target": "reconstruction_rss (RSS do k-space totalmente amostrado)",
+  "applied_to": ["varnet_output", "reconstruction_rss_target"],
+  "applied_when": "runtime (Dataset.__getitem__), nao em pre-processamento",
+  "rationale": "Consistencia com Giannakopoulos et al. (2026) e fastMRI library oficial (Sriram et al., 2020). Max por volume elimina variabilidade entre scanners/coils mantendo comparabilidade inter-fatias do mesmo paciente.",
+  "robustness_check": {
+    "description": "Reportar resultados com percentil 99 como analise de sensibilidade no Cap. 4 (Ottesen et al., 2025).",
+    "formula_alternativa": "x_normalized = x / np.quantile(abs(reconstruction_rss), 0.99)"
+  },
+  "refs": [
+    "Giannakopoulos et al. (2026). arXiv:2601.13236",
+    "Sriram et al. (2020). MICCAI",
+    "Romano, Patterson & Candes (2019). NeurIPS",
+    "Ottesen, Storas & Caan (2025). Evaluating Structural Uncertainty in Accelerated MRI"
+  ]
+}

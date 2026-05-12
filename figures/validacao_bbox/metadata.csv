@@ -1,0 +1,11 @@
+file,slice,orig_shape,n_bboxes,output
+file_brain_AXFLAIR_200_6002493,6,"(320, 320)",3,D:\Mri\validacao_bbox\overlay_00_file_brain_AXFLAIR_200_6002493_s6.png
+file_brain_AXFLAIR_200_6002467,6,"(320, 320)",1,D:\Mri\validacao_bbox\overlay_01_file_brain_AXFLAIR_200_6002467_s6.png
+file_brain_AXFLAIR_200_6002487,4,"(320, 320)",2,D:\Mri\validacao_bbox\overlay_02_file_brain_AXFLAIR_200_6002487_s4.png
+file_brain_AXFLAIR_201_6003003,8,"(320, 260)",2,D:\Mri\validacao_bbox\overlay_03_file_brain_AXFLAIR_201_6003003_s8.png
+file_brain_AXT1_202_2020570,0,"(320, 320)",1,D:\Mri\validacao_bbox\overlay_04_file_brain_AXT1_202_2020570_s0.png
+file_brain_AXT1_202_2020389,3,"(320, 320)",1,D:\Mri\validacao_bbox\overlay_05_file_brain_AXT1_202_2020389_s3.png
+file_brain_AXT1_202_2020143,11,"(320, 320)",1,D:\Mri\validacao_bbox\overlay_06_file_brain_AXT1_202_2020143_s11.png
+file_brain_AXT1_202_2020509,12,"(320, 320)",7,D:\Mri\validacao_bbox\overlay_07_file_brain_AXT1_202_2020509_s12.png
+file_brain_AXT1POST_201_6002812,1,"(320, 320)",3,D:\Mri\validacao_bbox\overlay_08_file_brain_AXT1POST_201_6002812_s1.png
+file_brain_AXT1POST_201_6002803,1,"(320, 320)",1,D:\Mri\validacao_bbox\overlay_09_file_brain_AXT1POST_201_6002803_s1.png

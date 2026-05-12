@@ -1,0 +1,36 @@
+{
+  "seed": 42,
+  "total_elegiveis": 352,
+  "criterio_inclusao": "volumes com pelo menos uma bbox slice-level no brain.csv",
+  "criterio_exclusao": "398 volumes apenas com anotacao study-level",
+  "sizes": {
+    "train": 213,
+    "val": 46,
+    "cal": 46,
+    "test": 47
+  },
+  "seq_distribution": {
+    "train": {
+      "AXFLAIR": 117,
+      "AXT1": 57,
+      "AXT1POST": 39
+    },
+    "val": {
+      "AXFLAIR": 26,
+      "AXT1POST": 8,
+      "AXT1": 12
+    },
+    "cal": {
+      "AXT1": 13,
+      "AXFLAIR": 25,
+      "AXT1POST": 8
+    },
+    "test": {
+      "AXFLAIR": 26,
+      "AXT1": 13,
+      "AXT1POST": 8
+    }
+  },
+  "fastmri_plus_ref": "Zhao et al. 2022, Sci Data 9:152",
+  "stratification_ref": "Tibshirani et al. 2019, Conformal Prediction Under Covariate Shift"
+}

@@ -209,4 +209,7 @@ __marimo__/
 # Dados pesados
 *.h5
 *.pt
-data/
+data/masks/
+data/recons/
+data/brain_multicoil/
+data/fastmri-plus/

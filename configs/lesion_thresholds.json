@@ -1,0 +1,13 @@
+{
+  "thresholds_px2": {
+    "small": 200,
+    "medium": 2000
+  },
+  "defined_on": "training set only (n_bboxes=3351)",
+  "distribution": {
+    "pequena": 0,
+    "media": 0,
+    "grande": 0
+  },
+  "rationale": "Thresholds definidos apenas com training set para evitar data leakage metodologico. Mantem consistencia com Demsar (2006). Faixas escolhidas considerando: (i) lesoes <50 px aproximam a resolucao de bbox minima do fastMRI+; (ii) lesoes >200 px sao predominantemente massas e nao desafiam tanto a quantificacao de incerteza."
+}
