@@ -213,3 +213,4 @@ data/masks/
 data/recons/
 data/brain_multicoil/
 data/fastmri-plus/
+.env

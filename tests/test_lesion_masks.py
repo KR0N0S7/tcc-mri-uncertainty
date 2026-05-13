@@ -1,3 +1,16 @@
+# Autor: Massanori
+# Data: 13/05/2026
+# Descrição: Testes unitários para src/data/lesion_masks.py. 7 testes que
+#            blindam a correção de flip vertical de bboxes contra refatorações
+#            futuras: validação sem flip, validação com flip, caso real do
+#            diagnóstico (AXFLAIR_200_6002493 fatia 6), união binária de
+#            múltiplas bboxes, clipping em bordas, suporte a imagens não
+#            quadradas, e exclusão correta de anotações study-level. Recebe:
+#            parâmetros sintéticos via parametrização do pytest. Retorna:
+#            assertions pass/fail. Roda com:
+#            python -m pytest tests/test_lesion_masks.py -v
+
+
 """
 Testes unitarios da correcao de orientacao em lesion_masks.py
 """

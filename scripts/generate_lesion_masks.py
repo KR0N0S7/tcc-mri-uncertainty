@@ -1,12 +1,17 @@
-"""
-Pipeline batch: gera mascaras de lesao para os 724 volumes anotados.
-Output: um .pt por volume em data/masks/{volume_stem}.pt
-Uso:
-    python scripts/generate_lesion_masks.py \
-        --anotados D:/Mri/anotados \
-        --brain-csv D:/Mri/brain.csv \
-        --out data/masks
-"""
+# Autor: Massanori
+# Data: 13/05/2026
+# Descrição: Pipeline batch de geração das máscaras binárias para todos os
+#            volumes anotados. Itera com tqdm e verifica integridade. Recebe:
+#            pasta anotados/, brain.csv e pasta de saída (via env vars com
+#            defaults). Retorna: um arquivo .pt por volume em data/masks/
+#            contendo dict {masks: tensor (n_slices, H, W) float32, volume:
+#            stem do nome, shape, apply_y_flip: True, fastmri_plus_ref}.
+#            Idempotente — pula volumes já processados a menos que --overwrite
+#            seja passado. Imprime resumo final com {with_lesion, no_lesion,
+#            skipped, error}.
+
+
+"""Pipeline batch: gera mascaras para os volumes anotados."""
 import argparse
 import logging
 import sys
@@ -17,14 +22,15 @@ import torch
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src import config
 from src.data.lesion_masks import volume_masks_from_h5
 
 
-def main(anotados_dir: Path, brain_csv: Path, output_dir: Path, overwrite: bool):
-    logging.basicConfig(level=logging.WARNING)  # silencia info por volume
+def main(anotados_dir: Path, brain_csv_path: Path, output_dir: Path, overwrite: bool):
+    logging.basicConfig(level=logging.WARNING)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    brain_df = pd.read_csv(brain_csv)
+    brain_df = pd.read_csv(brain_csv_path)
     volumes = sorted(anotados_dir.glob('*.h5'))
     print(f'Volumes a processar: {len(volumes)}')
 
@@ -54,9 +60,15 @@ def main(anotados_dir: Path, brain_csv: Path, output_dir: Path, overwrite: bool)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--anotados', type=Path, required=True)
-    parser.add_argument('--brain-csv', type=Path, required=True)
-    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--anotados', type=Path, default=None)
+    parser.add_argument('--brain-csv', type=Path, default=None)
+    parser.add_argument('--out', type=Path, default=None)
     parser.add_argument('--overwrite', action='store_true')
     args = parser.parse_args()
-    main(args.anotados, args.brain_csv, args.out, args.overwrite)
+
+    main(
+        anotados_dir=args.anotados or config.anotados_dir(),
+        brain_csv_path=args.brain_csv or config.brain_csv(),
+        output_dir=args.out or config.masks_dir(),
+        overwrite=args.overwrite,
+    )

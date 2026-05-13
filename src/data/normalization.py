@@ -1,3 +1,15 @@
+# Autor: Massanori
+# Data: 13/05/2026
+# Descrição: Estratégia de normalização max-volume para reconstruções RSS do
+#            fastMRI (Giannakopoulos et al., 2026; Sriram et al., 2020). Recebe:
+#            tensor de reconstrução para computar max_val, ou tensor + max_val
+#            previamente computado. Retorna: tensor normalizado (divisão pelo
+#            max do volume inteiro, não por fatia) ou desnormalizado (multiplicação).
+#            Mantém consistência inter-fatias do mesmo paciente, eliminando
+#            variabilidade entre scanners e coils. Protegido por 5 testes
+#            unitários em tests/test_normalization.py.
+
+
 """
 Estrategia de normalizacao: max-norm por volume.
 Refs: Giannakopoulos et al. (2026), Sriram et al. (2020).

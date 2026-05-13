@@ -1,3 +1,15 @@
+# Autor: Massanori
+# Data: 13/05/2026
+# Descrição: Geração de máscaras binárias de lesão a partir dos bounding boxes
+#            do fastMRI+ (Zhao et al., 2022). Implementa correção crítica de
+#            orientação Y (y_fastmri = H - y_dicom - h) para alinhar bboxes
+#            anotadas em DICOMs com reconstruction_rss armazenado no HDF5
+#            (orientações diferem por flip vertical). Recebe: coordenadas de
+#            bbox + shape da imagem, ou DataFrame de anotações, ou caminho do
+#            HDF5 + brain_df completo. Retorna: tensor float32 binário (H, W)
+#            por fatia ou (n_slices, H, W) por volume. Protegido por 7 testes
+#            unitários em tests/test_lesion_masks.py.
+
 """
 Geracao de mascaras binarias de lesoes a partir das anotacoes fastMRI+.
 

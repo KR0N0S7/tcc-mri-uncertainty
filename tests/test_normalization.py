@@ -1,3 +1,14 @@
+# Autor: Massanori
+# Data: 13/05/2026
+# Descrição: Testes unitários para src/data/normalization.py. 5 testes que
+#            blindam a estratégia max-volume: range [0, 1] pós-normalização,
+#            denormalize é exatamente inverso de normalize, ValueError em
+#            max_val <= 0, max é computado sobre todas as fatias (não por
+#            fatia), preservação de proporções internas após normalização.
+#            Recebe: tensores sintéticos. Retorna: assertions pass/fail.
+#            Roda com: python -m pytest tests/test_normalization.py -v
+
+
 import pytest
 import torch
 
