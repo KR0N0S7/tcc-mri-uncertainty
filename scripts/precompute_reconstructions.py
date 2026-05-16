@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 16/05/2026
+# Data: 13/05/2026
 # Descrição: Pipeline batch de pré-computação das reconstruções E2E-VarNet
 #            para todos os volumes dos splits estratificados do S3 (213
 #            train + 46 val + 46 cal + 47 test = 352 volumes). Recebe:
@@ -338,21 +338,24 @@ def process_split(
             mask = batch.mask.to(device)
             slice_num = int(_to_scalar(batch.slice_num))
             max_val = float(_to_scalar(batch.max_value))
-            crop_size = (
-                int(_to_scalar(batch.crop_size[0])),
-                int(_to_scalar(batch.crop_size[1])),
-            )
 
             output = model(masked_kspace, mask)
-            output = T.center_crop(output, crop_size)
-            recon_2d = output.cpu().squeeze(0).numpy()
 
+            # Brain dataset tem variabilidade de shape: alguns volumes tem
+            # recon_size (attrs do H5) MAIOR que o shape efetivo do output
+            # da VarNet (k-space pode ter sido zero-padded em algumas aquisicoes).
+            # T.center_crop(output, crop_size) com crop_size > output.shape
+            # falha com "Invalid shapes". A solucao robusta e cropar AMBOS
+            # output e target para min(output.shape, target.shape) — assim eles
+            # ficam com o mesmo shape para SSIM/error_map, qualquer que seja
+            # a relacao entre as dimensoes.
             target_t = batch.target
-            target_2d = (
-                target_t.squeeze(0).numpy()
-                if torch.is_tensor(target_t)
-                else np.asarray(target_t)
-            )
+            if not torch.is_tensor(target_t):
+                target_t = torch.as_tensor(target_t)
+            output, target_t = T.center_crop_to_smallest(output, target_t)
+
+            recon_2d = output.cpu().squeeze(0).numpy()
+            target_2d = target_t.cpu().squeeze(0).numpy()
 
             current_records.append((slice_num, recon_2d, target_2d))
             current_max_vals.append(max_val)
