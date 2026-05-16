@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 15/05/2026
+# Data: 16/05/2026
 # Descrição: Pipeline batch de pré-computação das reconstruções E2E-VarNet
 #            para todos os volumes dos splits estratificados do S3 (213
 #            train + 46 val + 46 cal + 47 test = 352 volumes). Recebe:
@@ -202,7 +202,10 @@ def save_volume(
     max_val = float(max(max_vals))
 
     out_path = split_out_dir / f'{stem}.npz'
-    tmp_path = out_path.with_suffix('.npz.tmp')
+    # tmp_path PRECISA terminar em .npz porque np.savez_compressed adiciona
+    # ".npz" automaticamente se a extensao nao for essa. Usamos ".tmp.npz"
+    # para diferenciar do arquivo final mas manter a extensao esperada.
+    tmp_path = split_out_dir / f'{stem}.tmp.npz'
 
     np.savez_compressed(
         tmp_path,
