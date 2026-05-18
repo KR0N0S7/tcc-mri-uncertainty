@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 17/05/2026
+# Data: 18/05/2026
 # Descrição: Treino completo do Grupo A (ResM) — 210000 iters, hiperparametros
 #            replicando Giannakopoulos et al. (2026). Recebe: --recons-dir
 #            (default cfg.recons_dir()), --device (cuda recomendado),

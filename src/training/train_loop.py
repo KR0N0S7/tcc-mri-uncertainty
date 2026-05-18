@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 17/05/2026
+# Data: 18/05/2026
 # Descrição: Loop de treino unificado para os Grupos A/B/C do S5. Recebe:
 #            modulo nn.Module (ResM ou QR/QR-Lesion), loss_fn (resm_loss,
 #            qr_loss ou qr_lesion_loss), DataLoaders train/val, total_iters,

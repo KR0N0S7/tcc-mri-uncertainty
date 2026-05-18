@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 17/05/2026
+# Data: 18/05/2026
 # Descrição: Setup determinístico de RNGs (Python random, numpy, torch CPU e
 #            CUDA) e flags do cuDNN/CUBLAS. Recebe: int seed e flag
 #            deterministic. Retorna: None (efeito colateral global).
