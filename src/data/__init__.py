@@ -1,7 +1,9 @@
 # Autor: Massanori
-# Data: 13/05/2026
+# Data: 17/05/2026
 # Descrição: Marcador de pacote Python. Permite que 'src.data' e 'src' sejam
-#            importáveis. Mantido vazio intencionalmente.
+#            importáveis. Expõe a API pública do submódulo de dados: builder
+#            do dataset k-space (S4), Dataset slice-wise sobre as reconstruções
+#            pré-computadas (S5) e função utilitária de extração de sequência.
 
 from src.data.kspace_dataset import (
     DEFAULT_ACCELERATION,
@@ -11,4 +13,9 @@ from src.data.kspace_dataset import (
     load_split,
     make_brain_mask_func,
     make_volume_filter,
+)
+from src.data.recons_dataset import (
+    KNOWN_SEQUENCES,
+    ReconsSliceDataset,
+    extract_sequence,
 )
