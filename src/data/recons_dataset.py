@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 17/05/2026
+# Data: 17/05/2026 (mod 20/05/2026: suporte a mascaras salvas como dict)
 # Descrição: Dataset PyTorch slice-wise sobre as reconstruções pré-computadas
 #            no S4 (arquivos .npz gerados por scripts/precompute_reconstructions.py).
 #            Recebe: diretório de um split (e.g. data/recons/train/) com .npz,
@@ -11,7 +11,13 @@
 #            com shuffle=False percorre slices do mesmo volume em sequência).
 #            Extrai o tipo de sequência (AXFLAIR/AXT1/AXT1POST) do volume_id
 #            para análise estratificada no S5.8/S6. Protegido por testes em
-#            tests/test_recons_dataset.py.
+#            tests/test_recons_dataset.py e tests/test_extract_mask.py.
+# Mod 20/05/2026: _extract_mask_tensor() suporta os 3 formatos comuns de .pt
+#                 do S3: (a) tensor direto, (b) dict com chave conhecida
+#                 ('mask', 'masks', 'lesion_mask', 'mask_volume', ...),
+#                 (c) dict com unico tensor entre os valores. Fix do bug
+#                 'Could not infer dtype of dict' que bloqueava o Grupo C
+#                 quando S3 salvava metadados junto da mascara.
 
 
 """Dataset PyTorch slice-wise sobre os .npz pre-computados no S4.
@@ -40,7 +46,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import torch
@@ -49,37 +55,98 @@ from torch.utils.data import Dataset
 logger = logging.getLogger(__name__)
 
 # Regex para extrair o tipo de sequencia do nome do volume fastMRI brain.
-# Casa AXFLAIR, AXT1, AXT1POST, AXT2 etc. — qualquer token comecando com 'AX'
-# seguido por letras/digitos. O mesmo padrao e usado em scripts/make_splits.py
-# para estratificar os splits do S3.
 _SEQ_PATTERN = re.compile(r'AX[A-Z0-9]+')
 
 # Sequencias presentes nos 352 volumes elegiveis apos filtragem do S3.
 KNOWN_SEQUENCES = ('AXFLAIR', 'AXT1', 'AXT1POST')
 
+# Chaves comuns onde uma mascara pode estar armazenada quando o .pt foi
+# salvo como dict (e.g., para preservar metadata junto). Ordem de prioridade.
+_MASK_DICT_KEYS = (
+    'mask',
+    'masks',
+    'lesion_mask',
+    'lesion_masks',
+    'mask_volume',
+    'volume_mask',
+    'data',
+    'tensor',
+    'volume',
+)
+
 
 def extract_sequence(volume_id: str) -> str:
-    """Extrai o tipo de sequencia (AXFLAIR/AXT1/AXT1POST) do volume_id.
+    """Extrai o tipo de sequencia (AXFLAIR/AXT1/AXT1POST) do volume_id."""
+    match = _SEQ_PATTERN.search(volume_id)
+    return match.group(0) if match else 'UNKNOWN'
 
-    O nome dos volumes fastMRI brain segue o padrao
-    `file_brain_<SEQUENCIA>_<study_id>_<exam_id>`, onde <SEQUENCIA> e o
-    token de interesse. Casos sem token reconhecivel retornam 'UNKNOWN'
-    e o caller decide se isso e erro — manter o Dataset permissivo evita
-    quebra em caso de extensoes futuras do dataset fastMRI.
+
+def _extract_mask_tensor(raw: Any, source_path: Path) -> torch.Tensor:
+    """Extrai um Tensor de mascara de um objeto carregado de .pt.
+
+    Suporta os 3 formatos comuns de save no S3:
+        1. Tensor direto: torch.save(mask_tensor, path)
+        2. Dict com chave conhecida (e.g. 'mask', 'lesion_mask', 'mask_volume')
+        3. Dict com unico tensor entre os valores (fallback heuristico)
+
+    Tambem aceita numpy arrays / listas via torch.as_tensor (legacy).
 
     Parameters
     ----------
-    volume_id : str
-        Stem do arquivo .h5 (sem extensao), e.g.
-        'file_brain_AXFLAIR_200_6002460'.
+    raw : Any
+        Objeto retornado por torch.load().
+    source_path : Path
+        Path do .pt (para mensagens de erro com contexto).
 
     Returns
     -------
-    str
-        Token de sequencia (e.g. 'AXFLAIR') ou 'UNKNOWN' se nao casou.
+    torch.Tensor
+        Tensor de mascara (ainda nao castado para float). Tipicamente
+        shape (n_slices, H, W) ou (H, W).
+
+    Raises
+    ------
+    ValueError
+        Se raw for dict sem chave conhecida e sem tensor unico, ou
+        tipo nao convertivel.
     """
-    match = _SEQ_PATTERN.search(volume_id)
-    return match.group(0) if match else 'UNKNOWN'
+    if torch.is_tensor(raw):
+        return raw
+
+    if isinstance(raw, dict):
+        # Tenta chaves comuns na ordem de prioridade.
+        for key in _MASK_DICT_KEYS:
+            v = raw.get(key)
+            if torch.is_tensor(v):
+                return v
+
+        # Fallback: se ha exatamente 1 tensor entre os valores, usa ele.
+        tensor_items = [(k, v) for k, v in raw.items() if torch.is_tensor(v)]
+        if len(tensor_items) == 1:
+            k, v = tensor_items[0]
+            logger.warning(
+                f"Mascara em {source_path.name} e dict com 1 tensor sob chave "
+                f"'{k}' (nao em _MASK_DICT_KEYS). Usando assim mesmo; "
+                f"considere adicionar '{k}' a lista para silenciar este warning."
+            )
+            return v
+
+        raise ValueError(
+            f"Mascara em {source_path} e dict com chaves {list(raw.keys())} "
+            f"e {len(tensor_items)} tensores entre os valores. Nao consegui "
+            f"identificar o tensor da mascara. Adicione a chave correta a "
+            f"_MASK_DICT_KEYS em src/data/recons_dataset.py, ou re-salve o "
+            f".pt como tensor direto."
+        )
+
+    # Fallback final para numpy arrays / listas.
+    try:
+        return torch.as_tensor(raw)
+    except (TypeError, RuntimeError) as e:
+        raise ValueError(
+            f"Mascara em {source_path} tem tipo nao suportado "
+            f"{type(raw).__name__}: {e}"
+        )
 
 
 class ReconsSliceDataset(Dataset):
@@ -113,19 +180,14 @@ class ReconsSliceDataset(Dataset):
         volume_id, split, acceleration, center_fraction, varnet_sha256).
     masks_dir : str | Path or None, default None
         Diretorio com mascaras .pt nomeadas {volume_id}.pt do S3,
-        contendo tensor (n_slices, H, W). Obrigatorio para Grupo C
+        contendo tensor (n_slices, H, W) OU dict com a mascara sob uma
+        das chaves em _MASK_DICT_KEYS. Obrigatorio para Grupo C
         (QR-Lesion); opcional para A (ResM) e B (QR), que ignoram
         a mascara. Quando None, lesion_mask retorna zeros.
     apply_normalization : bool, default True
         Se True, divide recon/target/error_map por max_val. Mantenha
         True para treino — D1 (Romano et al., 2019, §3.2). False existe
         para inspecao manual de magnitudes brutas.
-
-    Notes
-    -----
-    Reprodutibilidade: a ordenacao dos arquivos via sorted() e o uso de
-    shuffle=False no DataLoader garantem que dois runs com mesma seed
-    visitam slices na mesma ordem (Paszke et al., 2019, §4).
     """
 
     def __init__(
@@ -152,9 +214,7 @@ class ReconsSliceDataset(Dataset):
 
         # Indexa (npz_path, slice_idx). Abrir cada .npz uma vez aqui custa
         # ~50 ms x 213 volumes = ~10 s de overhead de construcao no train
-        # split — aceitavel para uma vez por epoca. Alternativa seria
-        # cachear shapes num manifest separado, mas adicionaria estado
-        # mutavel sem ganho relevante.
+        # split — aceitavel para uma vez por epoca.
         self.index: list[tuple[Path, int]] = []
         for npz_path in npz_files:
             with np.load(npz_path, allow_pickle=False) as data:
@@ -181,10 +241,6 @@ class ReconsSliceDataset(Dataset):
         if self._cached_npz_path == npz_path and self._cached_npz_data is not None:
             return self._cached_npz_data
 
-        # Carrega arrays na hora — np.load com mmap=False aloca, mas o
-        # ganho do mmap em .npz comprimido e nulo (descompressao e em
-        # memoria de qualquer modo). Forcamos materializacao em arrays
-        # numpy reais via [...] (np.lib.npyio.NpzFile usa lazy loading).
         with np.load(npz_path, allow_pickle=False) as raw:
             data = {
                 'recon': raw['recon'][...],
@@ -206,6 +262,7 @@ class ReconsSliceDataset(Dataset):
         """Carrega tensor de mascaras (S, H, W) do volume, cacheando.
 
         Retorna None se masks_dir e None ou se o .pt nao existe.
+        Aceita .pt salvo como tensor direto OU dict (ver _extract_mask_tensor).
         """
         if self.masks_dir is None:
             return None
@@ -215,18 +272,16 @@ class ReconsSliceDataset(Dataset):
 
         mask_path = self.masks_dir / f'{volume_id}.pt'
         if not mask_path.is_file():
-            # Esperado para subset sem anotacoes — log apenas no primeiro
-            # encontro para nao poluir o stdout do treino.
             if self._cached_mask_volume != volume_id:
                 logger.debug(f'Mascara nao encontrada para {volume_id}')
             self._cached_mask_volume = volume_id
             self._cached_mask_tensor = None
             return None
 
-        mask = torch.load(mask_path, map_location='cpu')
-        if not torch.is_tensor(mask):
-            mask = torch.as_tensor(mask)
-        mask = mask.float()
+        # weights_only=False: dict de mascara nao e weights, e o default
+        # de torch>=2.6 (weights_only=True) recusa carregar dicts arbitrarios.
+        raw = torch.load(mask_path, map_location='cpu', weights_only=False)
+        mask = _extract_mask_tensor(raw, mask_path).float()
 
         self._cached_mask_volume = volume_id
         self._cached_mask_tensor = mask
@@ -246,8 +301,6 @@ class ReconsSliceDataset(Dataset):
                 f'Volume corrompido — re-rode precompute_reconstructions.'
             )
 
-        # Extrai a fatia 2D e adiciona dimensao de canal (1, H, W) compativel
-        # com fastmri.models.Unet (in_chans=1).
         recon_2d = data['recon'][slice_idx].astype(np.float32)
         target_2d = data['target'][slice_idx].astype(np.float32)
         error_2d = data['error_map'][slice_idx].astype(np.float32)
