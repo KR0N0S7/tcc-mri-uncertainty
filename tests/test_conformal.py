@@ -1,6 +1,6 @@
 # Autor: Massanori
-# Data: 19/05/2026
-# Descrição: Testes unitarios para src/calibration/conformal.py. Cobre:
+# Data: 19/05/2026 (mod 20/05/2026: migrados 3 testes uteis do test_calibration.py)
+# Descricao: Testes unitarios para src/calibration/conformal.py. Cobre:
 #   (1) cqr_score: sinal correto (positivo se y fora, negativo se y dentro),
 #   (2) scaled_cp_score: divisao por uncertainty + eps,
 #   (3) conformal_quantile: correcao finite-sample (1-alpha)(n+1)/n,
@@ -10,17 +10,20 @@
 #       em dados sinteticos com distribuicao conhecida (validacao da
 #       garantia formal de Romano et al., 2019, Teorema 1),
 #   (7) apply_cqr_interval e apply_resm_interval: aritmetica correta,
-#   (8) erros claros para inputs invalidos.
+#   (8) erros claros para inputs invalidos,
+#   (9) [migrados] convergencia para Phi^-1(0.9) com N(0,1), correcao
+#       finite-sample para n pequeno, q_hat negativo para intervalo
+#       conservador demais.
 # Roda com: python -m pytest tests/test_conformal.py -v
 
 
 """Testes para src/calibration/conformal.py.
 
-O teste mais critico e test_calibrate_qr_achieves_marginal_coverage:
+O teste mais critico e test_cqr_calibrate_then_apply_atinge_cobertura_marginal:
 ele instancia um modulo fake com intervalos propositalmente estreitos
 (undercovered), calibra com cal split sintetico, aplica ao test split,
 e verifica que a cobertura empirica e >= 1 - alpha. Esse e o teste do
-teorema de Romano et al. (2019).
+teorema de Romano et al. (2019, Teorema 1).
 """
 import pytest
 import torch
@@ -180,6 +183,37 @@ def test_conformal_quantile_rejeita_tensor_vazio():
         conformal_quantile(torch.zeros(0), alpha=0.10)
 
 
+def test_conformal_quantile_aproxima_phi_inverse_para_n_grande():
+    """Para scores ~ N(0, 1) com n >> 1, q -> Phi^-1(1 - alpha).
+
+    Valida que a implementacao converge para o quantile teorico de uma
+    distribuicao conhecida quando o numero de amostras e grande (a
+    correcao finite-sample (n+1)/n ~= 1). Phi^-1(0.9) ~= 1.28155.
+
+    Migrado do test_calibration.py legado (commit ae897c3 refactor).
+    """
+    torch.manual_seed(42)
+    scores = torch.randn(100_000)
+    q = conformal_quantile(scores, alpha=0.10)
+    # Phi^-1(0.9) ~= 1.2815515655
+    assert abs(q - 1.282) < 0.05, f'q_hat={q:.4f}, esperado ~1.282 (Phi^-1(0.9))'
+
+
+def test_conformal_quantile_correcao_finite_sample_com_n_pequeno():
+    """Para n=10 e alpha=0.10, q_level = 0.9 * 11/10 = 0.99.
+
+    A correcao (n+1)/n eleva o quantile efetivo. Sobre scores uniformes
+    em [0, 1] com n=10, q_hat deve estar bem proximo de 1.0 (perto do
+    maximo), nao de 0.9. Isso garante cobertura formal sob exchangeability
+    (Romano et al., 2019, Teorema 1).
+
+    Migrado do test_calibration.py legado.
+    """
+    scores = torch.linspace(0.0, 1.0, 10)  # [0.0, 0.111, ..., 1.0]
+    q = conformal_quantile(scores, alpha=0.10)
+    assert q > 0.9, f'q_hat={q:.3f}, esperado > 0.9 (correcao finite-sample)'
+
+
 # ---------------------------------------------------------------------------
 # Tests: calibrate end-to-end
 # ---------------------------------------------------------------------------
@@ -306,6 +340,26 @@ def test_apply_cqr_interval_aritmetica():
     l, u = apply_cqr_interval(lower, upper, q_hat)
     assert torch.allclose(l, torch.tensor([-0.5, 0.5]))
     assert torch.allclose(u, torch.tensor([1.5, 2.5]))
+
+
+def test_apply_cqr_interval_aceita_q_hat_negativo():
+    """Caso degenerado: intervalo bruto super conservador, calibracao estreita.
+
+    Se o modulo treinado sai com intervalos largos demais (overcovered),
+    q_hat sai negativo e o intervalo calibrado [lower - q_hat, upper + q_hat]
+    fica MAIS ESTREITO. Aritmetica permanece correta.
+
+    Migrado do test_calibration.py legado.
+    """
+    lower = torch.tensor([0.1])
+    upper = torch.tensor([0.9])
+    q_hat = -0.05  # Negativo: estreita o intervalo
+    l, u = apply_cqr_interval(lower, upper, q_hat)
+    assert l.item() == pytest.approx(0.15)
+    assert u.item() == pytest.approx(0.85)
+    assert (u - l).item() < (upper - lower).item(), (
+        'Com q_hat<0 o intervalo deve estreitar'
+    )
 
 
 def test_apply_resm_interval_aritmetica():
