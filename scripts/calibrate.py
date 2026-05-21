@@ -46,6 +46,9 @@ import hashlib
 import json
 import logging
 import sys
+import math
+import numpy as np
+import src.calibration.conformal as conformal_mod
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -103,7 +106,7 @@ def parse_args() -> argparse.Namespace:
         help=f'Nivel de miscoverage. Default {DEFAULT_ALPHA}.',
     )
     parser.add_argument(
-        '--device', default='cuda', choices=['cpu', 'cuda'],
+        '--device', default='auto', choices=['auto', 'cpu', 'cuda'],
     )
     parser.add_argument('--num-workers', type=int, default=2)
     parser.add_argument('--chans', type=int, default=32)
@@ -119,13 +122,54 @@ def compute_sha256(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+def resolve_device(device_arg: str) -> str:
+    if device_arg == 'auto':
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+    if device_arg == 'cuda' and not torch.cuda.is_available():
+        raise RuntimeError('CUDA solicitado mas nao disponivel.')
+    return device_arg
+
+
+def conformal_quantile_numpy_fallback(scores_flat: torch.Tensor, alpha: float) -> float:
+    s = scores_flat.detach().reshape(-1).to(torch.float32).cpu().numpy()
+    n = int(s.size)
+    if n == 0:
+        raise ValueError('scores_flat vazio na calibracao.')
+    k = int(math.ceil((n + 1) * (1.0 - alpha)))
+    k = min(max(k, 1), n)
+    idx = k - 1
+    return float(np.partition(s, idx)[idx])
+
+
+def install_cpu_quantile_hotfix() -> None:
+    original_fn = conformal_mod.conformal_quantile
+
+    def wrapped(scores_flat: torch.Tensor, alpha: float):
+        try:
+            return original_fn(scores_flat, alpha)
+        except RuntimeError as e:
+            if 'quantile() input tensor is too large' in str(e).lower():
+                logger.warning(
+                    'torch.quantile falhou por tensor grande; usando fallback numpy.partition.'
+                )
+                return conformal_quantile_numpy_fallback(scores_flat, alpha)
+            raise
+
+    conformal_mod.conformal_quantile = wrapped
 
 def main() -> int:
     args = parse_args()
 
-    if not args.checkpoint.is_file():
-        logger.error(f'Checkpoint nao encontrado: {args.checkpoint}')
-        return 2
+    try:
+        device = resolve_device(args.device)
+    except RuntimeError as e:
+        logger.error(str(e))
+        return 3
+
+    if device == 'cpu':
+        install_cpu_quantile_hotfix()
+
+    logger.info(f'Device: {device}')
 
     recons_root = (args.recons_dir or cfg.recons_dir()).expanduser().resolve()
     cal_dir = recons_root / 'cal'
@@ -167,8 +211,8 @@ def main() -> int:
     logger.info(f'Modulo Grupo {args.group}: {n_params:,} parametros')
 
     # 3. Carregar checkpoint
-    load_checkpoint(args.checkpoint, module, device=args.device)
-    module = module.to(args.device)
+    load_checkpoint(args.checkpoint, module, device=device)
+    module = module.to(device)
     logger.info(f'Checkpoint carregado.')
 
     # 4. Cal loader
@@ -176,13 +220,13 @@ def main() -> int:
     cal_loader = DataLoader(
         cal_ds, batch_size=1, shuffle=False,
         num_workers=args.num_workers,
-        pin_memory=(args.device == 'cuda'),
+        pin_memory=(device == 'cuda'),
     )
     logger.info(f'Cal dataset: {len(cal_ds)} slices')
 
     # 5. Calibrar
     result = calibrate_fn(
-        module, cal_loader, alpha=args.alpha, device=args.device,
+        module, cal_loader, alpha=args.alpha, device=device,
     )
 
     # 6. Montar JSON de saida com metadata para auditoria

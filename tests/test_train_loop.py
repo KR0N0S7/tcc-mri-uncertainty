@@ -135,6 +135,7 @@ def test_make_scheduler_warmup_linear():
 
     lrs = []
     for _ in range(15):
+        opt.step() 
         sched.step()
         lrs.append(opt.param_groups[0]['lr'])
 
@@ -157,6 +158,7 @@ def test_save_load_checkpoint_roundtrip(tmp_path: Path):
         p.data.add_(torch.randn_like(p) * 0.01)
     opt1.step()
     sched1.step()
+    opt1.step()
     sched1.step()
 
     ckpt_path = tmp_path / 'test_ckpt.pt'
