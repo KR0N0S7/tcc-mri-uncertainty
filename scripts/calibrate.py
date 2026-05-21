@@ -1,6 +1,6 @@
 # Autor: Massanori
-# Data: 19/05/2026
-# Descrição: Calibracao conforme de um modulo treinado dos Grupos A/B/C sobre
+# Data: 19/05/2026 (mod 21/05/2026: hotfix np.partition movido para conformal.py)
+# Descricao: Calibracao conforme de um modulo treinado dos Grupos A/B/C sobre
 #            o split cal. Recebe via CLI: --group {A, B, C}, --checkpoint
 #            (best.pt do grupo), --recons-dir (com subdir cal/), opcionalmente
 #            --masks-dir (para C usar Dataset com mascaras — nao afeta a
@@ -8,6 +8,10 @@
 #            com q_hat, metadata, e snapshot do checkpoint usado, para
 #            auditoria. O JSON e o que vira input do compute_metrics.py
 #            do S5.8 e do notebook da 4a entrega.
+# Mod 21/05/2026: removido install_cpu_quantile_hotfix() local; a robustez
+#                 contra torch.quantile com tensor > ~16M agora vive direto
+#                 em src.calibration.conformal.conformal_quantile (que faz
+#                 fallback automatico para numpy.partition).
 
 
 """Calibracao conforme de um checkpoint treinado.
@@ -45,12 +49,10 @@ import argparse
 import hashlib
 import json
 import logging
-import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -61,7 +63,6 @@ if str(ROOT) not in sys.path:
 
 from src import config as cfg  # noqa: E402
 from src.calibration import calibrate_qr, calibrate_resm  # noqa: E402
-import src.calibration.conformal as conformal_mod  # noqa: E402
 from src.data import ReconsSliceDataset  # noqa: E402
 from src.losses import DEFAULT_ALPHA  # noqa: E402
 from src.models import QuantileRegressionModule, ResidualMagnitudeModule  # noqa: E402
@@ -107,34 +108,6 @@ def resolve_device(device_arg: str) -> str:
     return device_arg
 
 
-def conformal_quantile_numpy_fallback(scores_flat: torch.Tensor, alpha: float) -> float:
-    s = scores_flat.detach().reshape(-1).to(torch.float32).cpu().numpy()
-    n = int(s.size)
-    if n == 0:
-        raise ValueError('scores_flat vazio na calibracao.')
-    k = int(math.ceil((n + 1) * (1.0 - alpha)))
-    k = min(max(k, 1), n)
-    idx = k - 1
-    return float(np.partition(s, idx)[idx])
-
-
-def install_cpu_quantile_hotfix() -> None:
-    original_fn = conformal_mod.conformal_quantile
-
-    def wrapped(scores_flat: torch.Tensor, alpha: float):
-        try:
-            return original_fn(scores_flat, alpha)
-        except RuntimeError as e:
-            if 'quantile() input tensor is too large' in str(e).lower():
-                logger.warning(
-                    'torch.quantile falhou por tensor grande; usando fallback numpy.partition.'
-                )
-                return conformal_quantile_numpy_fallback(scores_flat, alpha)
-            raise
-
-    conformal_mod.conformal_quantile = wrapped
-
-
 def main() -> int:
     args = parse_args()
 
@@ -147,9 +120,6 @@ def main() -> int:
     except RuntimeError as e:
         logger.error(str(e))
         return 3
-
-    if device == 'cpu':
-        install_cpu_quantile_hotfix()
 
     recons_root = (args.recons_dir or cfg.recons_dir()).expanduser().resolve()
     cal_dir = recons_root / 'cal'

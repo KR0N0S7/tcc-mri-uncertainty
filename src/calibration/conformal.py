@@ -1,5 +1,5 @@
 # Autor: Massanori
-# Data: 19/05/2026
+# Data: 19/05/2026 (mod 21/05/2026: fallback np.partition para CPU large-tensor)
 # Descrição: Calibracao conforme para os Grupos A/B/C do S5.7. Implementa
 #            os dois paradigmas relevantes:
 #            (1) CQR (Romano et al., 2019) para Grupos B e C (QR e QR-Lesion):
@@ -11,6 +11,11 @@
 #            Garantia formal de cobertura marginal pixelwise
 #            P(y_pix in [L, U]) >= 1 - alpha sob exchangeability
 #            (Vovk et al., 2005; Angelopoulos & Bates, 2023).
+# Mod 21/05/2026: conformal_quantile() ganha fallback robusto com
+#                 numpy.partition quando torch.quantile falha por tensor
+#                 muito grande (limite ~16M em CPU). Necessario para o S5.7
+#                 quando rodando em CPU (cota Kaggle GPU esgotada) com
+#                 ~70M pixels no split cal.
 
 
 """Calibracao conforme para intervalos de predicao em regressao de imagens.
@@ -30,6 +35,12 @@ Memoria: pooling de scores pixelwise de ~46 volumes cal x ~16 slices x
 320^2 pixels ~= 75M floats ~= 300 MB. Cabe em RAM CPU; se a memoria de
 GPU for limite, move scores para CPU em cada batch.
 
+Robustez do quantile: torch.quantile tem limite interno em CPU para
+tensores > ~16M elementos (issue conhecido do PyTorch). Para n maior,
+conformal_quantile() faz fallback com numpy.partition, que e O(n) com
+selecao parcial e nao tem esse limite. Resultado matematicamente
+equivalente (a diferenca para torch.quantile e <= 1 elemento entre vizinhos).
+
 Refs:
     Romano, Y.; Patterson, E.; Candes, E. (2019). Conformalized Quantile
         Regression. NeurIPS, 32:3543-3553. (Teorema 1, eq. 9-10)
@@ -41,12 +52,16 @@ Refs:
         A Gentle Introduction. FnT in ML, 16(4):494-591.
     Vovk, V.; Gammerman, A.; Shafer, G. (2005). Algorithmic Learning in
         a Random World. Springer.
+    Press, W.H. et al. (2007). Numerical Recipes (3rd ed.), Sec. 8.5:
+        Selection (partition-based, O(n)).
 """
 from __future__ import annotations
 
 import logging
+import math
 from typing import Tuple, Union
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -135,8 +150,44 @@ def scaled_cp_score(
 
 
 # ---------------------------------------------------------------------------
-# Quantile com correcao finite-sample
+# Quantile com correcao finite-sample e fallback robusto
 # ---------------------------------------------------------------------------
+
+def _quantile_via_partition(scores_flat: torch.Tensor, alpha: float) -> float:
+    """Fallback O(n) via numpy.partition quando torch.quantile falha.
+
+    Computa o k-esimo menor elemento via algoritmo de selecao
+    (introselect, Press et al. 2007), onde k = ceil((n+1)(1-alpha)).
+    Matematicamente equivalente ao torch.quantile(scores, q_level)
+    com q_level = (1-alpha)(n+1)/n (diferenca de no maximo 1 indice
+    em n, ou seja, ~10^-7 para n=70M).
+
+    Necessario para a calibracao do S5.7 em CPU: o split cal tem
+    ~70M pixels (730 slices x 320^2), e torch.quantile crasha em
+    CPU para n > ~16M elementos (limite interno do PyTorch:
+    https://github.com/pytorch/pytorch/issues/64947).
+
+    Parameters
+    ----------
+    scores_flat : torch.Tensor
+        Tensor (possivelmente em GPU); sera movido para CPU para a
+        operacao numpy. Aceita qualquer shape (sera flattened).
+    alpha : float
+        Nivel de miscoverage, no intervalo aberto (0, 1).
+
+    Returns
+    -------
+    float
+        q_hat escalar.
+    """
+    s = scores_flat.detach().reshape(-1).to(torch.float32).cpu().numpy()
+    n = int(s.size)
+    if n == 0:
+        raise ValueError('Tensor de scores vazio')
+    k = int(math.ceil((n + 1) * (1.0 - alpha)))
+    k = min(max(k, 1), n)  # clip a [1, n]
+    return float(np.partition(s, k - 1)[k - 1])
+
 
 def conformal_quantile(scores: torch.Tensor, alpha: float = 0.10) -> float:
     """Quantile empirico (1-alpha)(n+1)/n com correcao finite-sample.
@@ -144,6 +195,10 @@ def conformal_quantile(scores: torch.Tensor, alpha: float = 0.10) -> float:
     Romano et al. (2019, Teorema 1): o fator (1+1/n) e necessario para a
     garantia de cobertura formal P(y in C_hat) >= 1 - alpha sob
     exchangeability. Para n grande, q_level ~= 1 - alpha.
+
+    Robustez: torch.quantile tem limite interno de ~16M elementos em CPU.
+    Para tensores maiores (e.g. 70M pixels do split cal), automatically
+    fallbacks para numpy.partition (O(n), sem o limite interno).
 
     Parameters
     ----------
@@ -167,7 +222,21 @@ def conformal_quantile(scores: torch.Tensor, alpha: float = 0.10) -> float:
 
     # Clip a 1.0 caso (1-alpha)(n+1)/n > 1 para n muito pequeno
     q_level = min((1.0 - alpha) * (n + 1) / n, 1.0)
-    return torch.quantile(scores_flat, q_level).item()
+
+    try:
+        return torch.quantile(scores_flat, q_level).item()
+    except RuntimeError as e:
+        # torch.quantile falha em CPU para n > ~16M com mensagem que contem
+        # 'too large' (mensagem exata varia entre versoes do PyTorch).
+        # Fallback equivalente via partition.
+        if 'too large' in str(e).lower():
+            logger.warning(
+                f'torch.quantile falhou com n={n:,} (limite ~16M em CPU); '
+                f'usando fallback numpy.partition.'
+            )
+            return _quantile_via_partition(scores_flat, alpha)
+        # Outros RuntimeErrors propagam normalmente
+        raise
 
 
 # ---------------------------------------------------------------------------

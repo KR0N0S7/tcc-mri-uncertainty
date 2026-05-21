@@ -1,5 +1,6 @@
 # Autor: Massanori
-# Data: 19/05/2026 (mod 20/05/2026: migrados 3 testes uteis do test_calibration.py)
+# Data: 19/05/2026 (mod 20/05/2026: migrados 3 testes do test_calibration legado)
+# Data: (mod 21/05/2026: testes do fallback np.partition em conformal_quantile)
 # Descricao: Testes unitarios para src/calibration/conformal.py. Cobre:
 #   (1) cqr_score: sinal correto (positivo se y fora, negativo se y dentro),
 #   (2) scaled_cp_score: divisao por uncertainty + eps,
@@ -12,8 +13,10 @@
 #   (7) apply_cqr_interval e apply_resm_interval: aritmetica correta,
 #   (8) erros claros para inputs invalidos,
 #   (9) [migrados] convergencia para Phi^-1(0.9) com N(0,1), correcao
-#       finite-sample para n pequeno, q_hat negativo para intervalo
-#       conservador demais.
+#       finite-sample para n pequeno, q_hat negativo,
+#  (10) [mod 21/05] fallback np.partition: ativa quando torch.quantile
+#       falha por 'too large', retorna resultado matematicamente
+#       equivalente, propaga outros RuntimeErrors.
 # Roda com: python -m pytest tests/test_conformal.py -v
 
 
@@ -24,7 +27,13 @@ ele instancia um modulo fake com intervalos propositalmente estreitos
 (undercovered), calibra com cal split sintetico, aplica ao test split,
 e verifica que a cobertura empirica e >= 1 - alpha. Esse e o teste do
 teorema de Romano et al. (2019, Teorema 1).
+
+Os 2 testes do fallback (test_conformal_quantile_*fallback*) validam o
+comportamento robusto adicionado em 21/05 para CPU + tensores grandes,
+usados na pratica no S5.7 quando a cota Kaggle GPU esgotou.
 """
+import unittest.mock as mock
+
 import pytest
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -212,6 +221,67 @@ def test_conformal_quantile_correcao_finite_sample_com_n_pequeno():
     scores = torch.linspace(0.0, 1.0, 10)  # [0.0, 0.111, ..., 1.0]
     q = conformal_quantile(scores, alpha=0.10)
     assert q > 0.9, f'q_hat={q:.3f}, esperado > 0.9 (correcao finite-sample)'
+
+
+# ---------------------------------------------------------------------------
+# Tests: fallback np.partition (mod 21/05/2026)
+# ---------------------------------------------------------------------------
+
+def test_conformal_quantile_fallback_ativa_quando_torch_quantile_falha_por_tensor_grande():
+    """Quando torch.quantile lanca RuntimeError com 'too large', o fallback
+    via np.partition deve ser ativado e retornar resultado equivalente.
+
+    Simulamos via mock.patch porque criar um tensor real >16M para o teste
+    seria caro (e poderia falhar em maquinas com pouca RAM). A logica do
+    fallback e independente do tamanho real do tensor.
+
+    Cenario real onde isso e usado: S5.7 calibracao em CPU com 70M pixels
+    (cota Kaggle GPU esgotada).
+    """
+    torch.manual_seed(0)
+    scores = torch.linspace(0.0, 10.0, 1000)
+    alpha = 0.10
+
+    # Sem mock: caminho normal via torch.quantile
+    q_normal = conformal_quantile(scores, alpha=alpha)
+
+    # Com mock: torch.quantile lanca RuntimeError com 'too large',
+    # forcando o fallback
+    def mock_quantile_raises_too_large(*args, **kwargs):
+        raise RuntimeError('quantile() input tensor is too large')
+
+    with mock.patch.object(torch, 'quantile', mock_quantile_raises_too_large):
+        q_fallback = conformal_quantile(scores, alpha=alpha)
+
+    # Para n=1000 e alpha=0.10:
+    #   torch.quantile: q_level=(0.9*1001/1000)=0.9009; interpolacao linear
+    #                   entre indices 900 e 901 (0-based) sobre dados ordenados
+    #   np.partition: k=ceil(1001*0.9)=901; elemento na posicao 900 (0-based)
+    # Diferenca esperada: ate ~1 unidade de espacamento entre vizinhos = 0.01.
+    assert abs(q_normal - q_fallback) < 0.02, (
+        f'q_normal={q_normal:.4f}, q_fallback={q_fallback:.4f}, '
+        f'diff={abs(q_normal - q_fallback):.4f} > 0.02'
+    )
+    # Ambos devem estar perto de 9.0 (quantile 90% de [0, 10])
+    assert 8.8 < q_fallback < 9.2, f'q_fallback={q_fallback:.4f} fora de [8.8, 9.2]'
+
+
+def test_conformal_quantile_propaga_runtime_errors_nao_relacionados_a_tamanho():
+    """Apenas RuntimeErrors com 'too large' acionam o fallback; outros
+    propagam normalmente (e.g. erros de device, dtype, NaN, etc.).
+
+    Garantia importante: o except nao engole bugs reais.
+    """
+    scores = torch.rand(100)
+
+    def mock_quantile_raises_other_error(*args, **kwargs):
+        raise RuntimeError(
+            'CUDA error: device-side assert triggered (totalmente nao relacionado)'
+        )
+
+    with mock.patch.object(torch, 'quantile', mock_quantile_raises_other_error):
+        with pytest.raises(RuntimeError, match='CUDA error'):
+            conformal_quantile(scores, alpha=0.10)
 
 
 # ---------------------------------------------------------------------------
