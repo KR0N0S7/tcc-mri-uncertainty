@@ -1,0 +1,742 @@
+{
+  "metadata": {
+    "created_at": "2026-05-24T21:01:25.050691+00:00",
+    "alpha": 0.05,
+    "n_bootstrap": 10000,
+    "bootstrap_method": "BCa",
+    "seed": 42,
+    "groups": [
+      "A",
+      "B",
+      "C"
+    ],
+    "metrics_tested": [
+      "coverage_global",
+      "coverage_lesion",
+      "mean_width_global",
+      "mean_width_lesion",
+      "iou_topk_global",
+      "iou_topk_lesion",
+      "ulas_lesion"
+    ]
+  },
+  "metric_results": {
+    "coverage_global": {
+      "metric": "coverage_global",
+      "metric_type": "global",
+      "n_paired": 736,
+      "means": {
+        "A": 0.8923317201273597,
+        "B": 0.8753208400195708,
+        "C": 0.8760628358096533
+      },
+      "stds": {
+        "A": 0.037051505238701474,
+        "B": 0.09198481106076598,
+        "C": 0.08910345832973023
+      },
+      "medians": {
+        "A": 0.8977369070053101,
+        "B": 0.8973437547683716,
+        "C": 0.8973827958106995
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.8893935959570646,
+          "high": 0.8947164386838926
+        },
+        "B": {
+          "low": 0.8683252641634398,
+          "high": 0.881591985565688
+        },
+        "C": {
+          "low": 0.8692845708441959,
+          "high": 0.8823002934521564
+        }
+      },
+      "friedman": {
+        "statistic": 5.129186602870336,
+        "p_value": 0.07695047072475691
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 1.5860071945223114e-06,
+          "p_holm": 4.7580215835669345e-06,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 1.756929432211515e-06,
+          "p_holm": 4.7580215835669345e-06,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 1.8793154331324126e-05,
+          "p_holm": 1.8793154331324126e-05,
+          "significant_at_alpha": true
+        }
+      ]
+    },
+    "coverage_lesion": {
+      "metric": "coverage_lesion",
+      "metric_type": "lesion",
+      "n_paired": 362,
+      "means": {
+        "A": 0.868679877802812,
+        "B": 0.7836409034156009,
+        "C": 0.7858307066872634
+      },
+      "stds": {
+        "A": 0.06718161664287765,
+        "B": 0.11194865952978299,
+        "C": 0.10816065804701756
+      },
+      "medians": {
+        "A": 0.8865507245063782,
+        "B": 0.7979818284511566,
+        "C": 0.7981739342212677
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.8614165631348282,
+          "high": 0.8752071397392386
+        },
+        "B": {
+          "low": 0.7717567752508357,
+          "high": 0.7947161698582854
+        },
+        "C": {
+          "low": 0.7746723747175042,
+          "high": 0.7970817785510287
+        }
+      },
+      "friedman": {
+        "statistic": 181.53542731921124,
+        "p_value": 3.8026190771705636e-40
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 1.968900109129033e-39,
+          "p_holm": 5.9067003273871e-39,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 6.245069124312028e-39,
+          "p_holm": 1.2490138248624056e-38,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 0.00065167969749756,
+          "p_holm": 0.00065167969749756,
+          "significant_at_alpha": true
+        }
+      ]
+    },
+    "mean_width_global": {
+      "metric": "mean_width_global",
+      "metric_type": "global",
+      "n_paired": 736,
+      "means": {
+        "A": 0.031161340377445324,
+        "B": 0.035706198263063,
+        "C": 0.03598063487974598
+      },
+      "stds": {
+        "A": 0.015179852543071234,
+        "B": 0.006857307400026095,
+        "C": 0.007386864940292679
+      },
+      "medians": {
+        "A": 0.0277622295543551,
+        "B": 0.034398684278130504,
+        "C": 0.0344582702964544
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.030119950649079023,
+          "high": 0.03233695963963996
+        },
+        "B": {
+          "low": 0.03523090082127119,
+          "high": 0.03621389959445218
+        },
+        "C": {
+          "low": 0.035467600958485716,
+          "high": 0.0365475932867105
+        }
+      },
+      "friedman": {
+        "statistic": 410.3831521739121,
+        "p_value": 7.6989371164581775e-90
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 4.182926025083963e-62,
+          "p_holm": 8.365852050167927e-62,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 5.293296488088603e-63,
+          "p_holm": 1.587988946426581e-62,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 1.526353678219847e-20,
+          "p_holm": 1.526353678219847e-20,
+          "significant_at_alpha": true
+        }
+      ]
+    },
+    "mean_width_lesion": {
+      "metric": "mean_width_lesion",
+      "metric_type": "lesion",
+      "n_paired": 362,
+      "means": {
+        "A": 0.04881171225081322,
+        "B": 0.044989026357414606,
+        "C": 0.04564977417190591
+      },
+      "stds": {
+        "A": 0.022036240037782037,
+        "B": 0.010709717349454861,
+        "C": 0.011101818609360112
+      },
+      "medians": {
+        "A": 0.04539962299168105,
+        "B": 0.04399960674345485,
+        "C": 0.0444404557347297
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.04659534917018281,
+          "high": 0.0510996433461985
+        },
+        "B": {
+          "low": 0.04392223071859052,
+          "high": 0.046113656589277255
+        },
+        "C": {
+          "low": 0.04451656341054745,
+          "high": 0.04681540671208321
+        }
+      },
+      "friedman": {
+        "statistic": 20.0939226519331,
+        "p_value": 4.331717605539665e-05
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 7.887201487700878e-05,
+          "p_holm": 0.00015774402975401755,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 0.004377220148381509,
+          "p_holm": 0.004377220148381509,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 4.7326902869047796e-08,
+          "p_holm": 1.419807086071434e-07,
+          "significant_at_alpha": true
+        }
+      ]
+    },
+    "iou_topk_global": {
+      "metric": "iou_topk_global",
+      "metric_type": "global",
+      "n_paired": 736,
+      "means": {
+        "A": 0.1653530210308069,
+        "B": 0.1618558955558213,
+        "C": 0.15966060429765827
+      },
+      "stds": {
+        "A": 0.04726836866809652,
+        "B": 0.046909852623893626,
+        "C": 0.04685152907563987
+      },
+      "medians": {
+        "A": 0.15824451020727887,
+        "B": 0.1559519142769855,
+        "C": 0.15424803868272935
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.16195687237711645,
+          "high": 0.16878195723100448
+        },
+        "B": {
+          "low": 0.1584888830752102,
+          "high": 0.1652089031191574
+        },
+        "C": {
+          "low": 0.15625092765250453,
+          "high": 0.16309619558552563
+        }
+      },
+      "friedman": {
+        "statistic": 509.791967044284,
+        "p_value": 1.995634011684475e-111
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 1.129249220215095e-56,
+          "p_holm": 2.25849844043019e-56,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 2.6550138048683093e-88,
+          "p_holm": 7.965041414604928e-88,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 1.9015127805380357e-38,
+          "p_holm": 1.9015127805380357e-38,
+          "significant_at_alpha": true
+        }
+      ]
+    },
+    "iou_topk_lesion": {
+      "metric": "iou_topk_lesion",
+      "metric_type": "lesion",
+      "n_paired": 362,
+      "means": {
+        "A": 0.08089099977232415,
+        "B": 0.07731792313439613,
+        "C": 0.07335084214819143
+      },
+      "stds": {
+        "A": 0.07362897419680038,
+        "B": 0.06791919900579818,
+        "C": 0.04731333311748522
+      },
+      "medians": {
+        "A": 0.07360999938427434,
+        "B": 0.077017230016006,
+        "C": 0.0732154024836951
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.07468834660463207,
+          "high": 0.09048012872344004
+        },
+        "B": {
+          "low": 0.07191633182534436,
+          "high": 0.08660765309478831
+        },
+        "C": {
+          "low": 0.06863959865679917,
+          "high": 0.07833792938100576
+        }
+      },
+      "friedman": {
+        "statistic": 20.330147697653928,
+        "p_value": 3.8491471956630286e-05
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 0.04463965728877606,
+          "p_holm": 0.08927931457755212,
+          "significant_at_alpha": false
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 0.0013123318390269884,
+          "p_holm": 0.003936995517080965,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 0.13184001929552203,
+          "p_holm": 0.13184001929552203,
+          "significant_at_alpha": false
+        }
+      ]
+    },
+    "ulas_lesion": {
+      "metric": "ulas_lesion",
+      "metric_type": "lesion",
+      "n_paired": 362,
+      "means": {
+        "A": 0.5820341790249335,
+        "B": 0.6032275094017798,
+        "C": 0.6062432325018045
+      },
+      "stds": {
+        "A": 0.07233234935771983,
+        "B": 0.05625442110158589,
+        "C": 0.05357833966177282
+      },
+      "medians": {
+        "A": 0.5902230441570282,
+        "B": 0.6114080250263214,
+        "C": 0.6131102740764618
+      },
+      "bootstrap_ci_95": {
+        "A": {
+          "low": 0.5744104036351665,
+          "high": 0.589088488577759
+        },
+        "B": {
+          "low": 0.5972330543875665,
+          "high": 0.6087091795005696
+        },
+        "C": {
+          "low": 0.6006418852351536,
+          "high": 0.6118112862893206
+        }
+      },
+      "friedman": {
+        "statistic": 284.2872928176794,
+        "p_value": 1.852672806671608e-62
+      },
+      "pairwise_wilcoxon": [
+        {
+          "pair": "A vs B",
+          "p_raw": 2.8174406409878296e-41,
+          "p_holm": 5.634881281975659e-41,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "A vs C",
+          "p_raw": 7.771423219627e-42,
+          "p_holm": 2.3314269658880997e-41,
+          "significant_at_alpha": true
+        },
+        {
+          "pair": "B vs C",
+          "p_raw": 9.135926985351605e-08,
+          "p_holm": 9.135926985351605e-08,
+          "significant_at_alpha": true
+        }
+      ]
+    }
+  },
+  "coverage_clopper_pearson": {
+    "global": {
+      "A": {
+        "covered": 60990290,
+        "total": 68366624,
+        "proportion": 0.8921062125284993,
+        "ci_low": 0.8920326471061684,
+        "ci_high": 0.8921797447467597,
+        "n_slices_used": 736
+      },
+      "B": {
+        "covered": 59908442,
+        "total": 68366624,
+        "proportion": 0.8762819998249438,
+        "ci_low": 0.8762039281062192,
+        "ci_high": 0.8763600396798706,
+        "n_slices_used": 736
+      },
+      "C": {
+        "covered": 59965697,
+        "total": 68366624,
+        "proportion": 0.8771194698746569,
+        "ci_low": 0.8770416255708195,
+        "ci_high": 0.8771972822437577,
+        "n_slices_used": 736
+      }
+    },
+    "lesion": {
+      "A": {
+        "covered": 1617406,
+        "total": 1981221,
+        "proportion": 0.8163682900595138,
+        "ci_low": 0.8158284391934594,
+        "ci_high": 0.8169072160061679,
+        "n_slices_used": 362
+      },
+      "B": {
+        "covered": 1441672,
+        "total": 1981221,
+        "proportion": 0.7276684428440845,
+        "ci_low": 0.7270479926419399,
+        "ci_high": 0.7282882274994609,
+        "n_slices_used": 362
+      },
+      "C": {
+        "covered": 1460289,
+        "total": 1981221,
+        "proportion": 0.7370651734460719,
+        "ci_low": 0.7364515774833679,
+        "ci_high": 0.7376780763877765,
+        "n_slices_used": 362
+      }
+    }
+  },
+  "group_metadata": {
+    "A": {
+      "group": "A",
+      "method": "ScaledCP",
+      "q_hat": 2.0527451038360596,
+      "alpha": 0.1,
+      "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-resm-checkpoints/runs/group_a_full/best.pt",
+      "checkpoint_sha256": "9ef2fa8e4e85706e2c90cdedc26cfe85dbf73987c6438b6070505072b493aeda",
+      "qhat_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-conformal-qhats/q_hat_A.json",
+      "qhat_sha256_from_json": "9ef2fa8e4e85706e2c90cdedc26cfe85dbf73987c6438b6070505072b493aeda",
+      "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+      "masks_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-lesion-masks",
+      "top_pct": 0.05,
+      "n_perms_ulas": 10,
+      "n_slices_total": 736,
+      "n_slices_with_lesion": 362,
+      "metrics_summary": {
+        "coverage_global": {
+          "mean": 0.8923316597938538,
+          "std": 0.03705150634050369,
+          "median": 0.8977199196815491,
+          "n_valid": 736
+        },
+        "coverage_lesion": {
+          "mean": 0.8686798810958862,
+          "std": 0.06718161702156067,
+          "median": 0.8863636255264282,
+          "n_valid": 362
+        },
+        "mean_width_global": {
+          "mean": 0.031161343678832054,
+          "std": 0.015179852955043316,
+          "median": 0.027717802673578262,
+          "n_valid": 736
+        },
+        "mean_width_lesion": {
+          "mean": 0.04881171137094498,
+          "std": 0.022036239504814148,
+          "median": 0.04517339542508125,
+          "n_valid": 362
+        },
+        "iou_topk_global": {
+          "mean": 0.16535301506519318,
+          "std": 0.04726836830377579,
+          "median": 0.15812917053699493,
+          "n_valid": 736
+        },
+        "iou_topk_lesion": {
+          "mean": 0.08089100569486618,
+          "std": 0.0736289769411087,
+          "median": 0.07339449226856232,
+          "n_valid": 362
+        },
+        "ulas_lesion": {
+          "mean": 0.5820342302322388,
+          "std": 0.07233235239982605,
+          "median": 0.5893484950065613,
+          "n_valid": 362
+        },
+        "ulas_null_mean": {
+          "mean": 0.5667768716812134,
+          "std": 0.0616910494863987,
+          "median": 0.5799429416656494,
+          "n_valid": 362
+        },
+        "ulas_z_score": {
+          "mean": 2.649977922439575,
+          "std": 2.996157646179199,
+          "median": 1.9212552309036255,
+          "n_valid": 362
+        },
+        "mean_uncertainty": {
+          "mean": 0.00759016303345561,
+          "std": 0.003697451902553439,
+          "median": 0.0067513990215957165,
+          "n_valid": 736
+        },
+        "mean_error": {
+          "mean": 0.007995108142495155,
+          "std": 0.005634638015180826,
+          "median": 0.006631478201597929,
+          "n_valid": 736
+        }
+      },
+      "created_at": "2026-05-24T02:23:26.795413+00:00"
+    },
+    "B": {
+      "group": "B",
+      "method": "CQR",
+      "q_hat": 0.01027485728263855,
+      "alpha": 0.1,
+      "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-qr-checkpoints/best.pt",
+      "checkpoint_sha256": "fc185dedb3457b3cec41e7640af3d35e8d968d4ae5f9431a3267952da516080a",
+      "qhat_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-conformal-qhats/q_hat_B.json",
+      "qhat_sha256_from_json": "fc185dedb3457b3cec41e7640af3d35e8d968d4ae5f9431a3267952da516080a",
+      "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+      "masks_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-lesion-masks",
+      "top_pct": 0.05,
+      "n_perms_ulas": 10,
+      "n_slices_total": 736,
+      "n_slices_with_lesion": 362,
+      "metrics_summary": {
+        "coverage_global": {
+          "mean": 0.8753209114074707,
+          "std": 0.0919848084449768,
+          "median": 0.8971484303474426,
+          "n_valid": 736
+        },
+        "coverage_lesion": {
+          "mean": 0.7836409211158752,
+          "std": 0.111948661506176,
+          "median": 0.7977985143661499,
+          "n_valid": 362
+        },
+        "mean_width_global": {
+          "mean": 0.03570619970560074,
+          "std": 0.006857307627797127,
+          "median": 0.03439707309007645,
+          "n_valid": 736
+        },
+        "mean_width_lesion": {
+          "mean": 0.044989027082920074,
+          "std": 0.010709716938436031,
+          "median": 0.04397270083427429,
+          "n_valid": 362
+        },
+        "iou_topk_global": {
+          "mean": 0.16185589134693146,
+          "std": 0.04690985381603241,
+          "median": 0.1558866649866104,
+          "n_valid": 736
+        },
+        "iou_topk_lesion": {
+          "mean": 0.07731793075799942,
+          "std": 0.06791920214891434,
+          "median": 0.07692307978868484,
+          "n_valid": 362
+        },
+        "ulas_lesion": {
+          "mean": 0.6032274961471558,
+          "std": 0.056254420429468155,
+          "median": 0.6113182306289673,
+          "n_valid": 362
+        },
+        "ulas_null_mean": {
+          "mean": 0.5885290503501892,
+          "std": 0.04522783309221268,
+          "median": 0.6033905744552612,
+          "n_valid": 362
+        },
+        "ulas_z_score": {
+          "mean": 2.7660000324249268,
+          "std": 3.169372081756592,
+          "median": 1.901764154434204,
+          "n_valid": 362
+        },
+        "mean_uncertainty": {
+          "mean": 0.007578242104500532,
+          "std": 0.0034286535810679197,
+          "median": 0.0069236792623996735,
+          "n_valid": 736
+        },
+        "mean_error": {
+          "mean": 0.007995108142495155,
+          "std": 0.005634638015180826,
+          "median": 0.006631478201597929,
+          "n_valid": 736
+        }
+      },
+      "created_at": "2026-05-24T02:24:53.627366+00:00"
+    },
+    "C": {
+      "group": "C",
+      "method": "CQR",
+      "q_hat": 0.010268524289131165,
+      "alpha": 0.1,
+      "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-qr-lesion-checkpoints/best.pt",
+      "checkpoint_sha256": "fa5198f832acd58fc8f0ed00a244dd92a86a8e3d2c7b7a8e57d0b20bc8cc58fe",
+      "qhat_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-conformal-qhats/q_hat_C.json",
+      "qhat_sha256_from_json": "fa5198f832acd58fc8f0ed00a244dd92a86a8e3d2c7b7a8e57d0b20bc8cc58fe",
+      "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+      "masks_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-lesion-masks",
+      "top_pct": 0.05,
+      "n_perms_ulas": 10,
+      "n_slices_total": 736,
+      "n_slices_with_lesion": 362,
+      "metrics_summary": {
+        "coverage_global": {
+          "mean": 0.87606281042099,
+          "std": 0.08910346031188965,
+          "median": 0.8969433307647705,
+          "n_valid": 736
+        },
+        "coverage_lesion": {
+          "mean": 0.7858306765556335,
+          "std": 0.10816065967082977,
+          "median": 0.7976190447807312,
+          "n_valid": 362
+        },
+        "mean_width_global": {
+          "mean": 0.03598063439130783,
+          "std": 0.007386865094304085,
+          "median": 0.034454818814992905,
+          "n_valid": 736
+        },
+        "mean_width_lesion": {
+          "mean": 0.04564977064728737,
+          "std": 0.011101818643510342,
+          "median": 0.04421708732843399,
+          "n_valid": 362
+        },
+        "iou_topk_global": {
+          "mean": 0.15966059267520905,
+          "std": 0.04685153067111969,
+          "median": 0.154062882065773,
+          "n_valid": 736
+        },
+        "iou_topk_lesion": {
+          "mean": 0.07335084676742554,
+          "std": 0.04731333255767822,
+          "median": 0.0731707289814949,
+          "n_valid": 362
+        },
+        "ulas_lesion": {
+          "mean": 0.6062432527542114,
+          "std": 0.05357833951711655,
+          "median": 0.6131011247634888,
+          "n_valid": 362
+        },
+        "ulas_null_mean": {
+          "mean": 0.5916363000869751,
+          "std": 0.04224066436290741,
+          "median": 0.6050558686256409,
+          "n_valid": 362
+        },
+        "ulas_z_score": {
+          "mean": 2.6910500526428223,
+          "std": 3.1595351696014404,
+          "median": 1.9193294048309326,
+          "n_valid": 362
+        },
+        "mean_uncertainty": {
+          "mean": 0.007721793372184038,
+          "std": 0.0036934325471520424,
+          "median": 0.006958885118365288,
+          "n_valid": 736
+        },
+        "mean_error": {
+          "mean": 0.007995108142495155,
+          "std": 0.005634638015180826,
+          "median": 0.006631478201597929,
+          "n_valid": 736
+        }
+      },
+      "created_at": "2026-05-24T02:26:10.304634+00:00"
+    }
+  }
+}
