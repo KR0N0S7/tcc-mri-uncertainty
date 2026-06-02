@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 # Autor: Massanori
 # Data: 22/05/2026
+#
+# !!! ATENCAO (26/05/2026) !!!
+# A funcao render_md_report() tem narrativa hardcoded ("H1 refutada",
+# "ULAS nao discrimina") que CONTRADIZ os dados estatisticos reais
+# (Wilcoxon-Holm mostra H1, H2, H3 CONFIRMADAS com p < 0.001).
+# O docs/S5.md canonico esta no commit 2beb408 (manual, narrativa correta).
+# NAO USE --output-md ate o refactor estar aplicado. Use apenas --output-json:
+#   python scripts/analyze_S5_9.py --csv-dir <d> --output-json <j>
+# Refactor pendente: HYPOTHESES + evaluate_hypothesis + _build_executive_summary
+
 # Descricao: S5.9 - analise estatistica formal das metricas do S5.8 +
 #            geracao do docs/S5.md. Recebe os 3 CSVs por slice
 #            (metrics_A.csv, metrics_B.csv, metrics_C.csv) e executa:
