@@ -76,8 +76,8 @@ def load_all(sweep_dir: Path, pattern: str) -> pd.DataFrame:
 def _series(df: pd.DataFrame):
     """Itera series (group, calibrator) na ordem canonica de LABELS."""
     present = list(dict.fromkeys(df['key']))
-    ordered = [k for k in LABELS if k in present] + \\
-              [k for k in present if k not in LABELS]
+    ordered = ([k for k in LABELS if k in present]
+               + [k for k in present if k not in LABELS])
     for k in ordered:
         yield k, df[df['key'] == k].sort_values('nominal_coverage')
 
