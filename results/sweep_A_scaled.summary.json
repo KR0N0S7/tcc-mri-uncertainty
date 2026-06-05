@@ -1,0 +1,32 @@
+{
+  "group": "A",
+  "calibrator": "scaled",
+  "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-resm-checkpoints/tcc-mri-resm-checkpoints/best.pt",
+  "checkpoint_sha256": "9ef2fa8e4e85706e2c90cdedc26cfe85dbf73987c6438b6070505072b493aeda",
+  "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+  "masks_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-lesion-masks",
+  "eps": 1e-06,
+  "levels": [
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.925,
+    0.95,
+    0.96,
+    0.97,
+    0.98,
+    0.99
+  ],
+  "cal_n_slices": 730,
+  "cal_n_pixels": 70759312,
+  "test_n_slices": 736,
+  "n_pixels_global": 68366624,
+  "n_pixels_lesion": 1981221,
+  "created_at": "2026-06-04T14:52:40.368514+00:00"
+}
