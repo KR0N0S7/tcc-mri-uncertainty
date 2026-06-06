@@ -13,7 +13,7 @@
 
 Este documento estende a 4ª entrega (S5) com cinco análises post-hoc executadas sobre os mesmos checkpoints (Grupos A/B/C) e os mesmos `metrics_*.csv` por slice do S5.8 — nenhuma exige re-treino. O objetivo é responder, com rigor, à pergunta deixada em aberto pelo S5: a superioridade do Grupo A (ResM) em cobertura de lesão (~8 pontos percentuais sobre o CQR) vem da **arquitetura** ou do **esquema de calibração** (multiplicativo *locally-adaptive* vs aditivo marginal)?
 
-As cinco análises são: (1) um quarto calibrador — **CQR normalizado** (localmente ponderado, Lei et al. 2018, Sec. 5.2) aplicado aos modelos B/C sem alterar a arquitetura, para isolar o mecanismo; (2) **fronteira de eficiência** (cobertura a largura igualada) para comparação justa entre métodos; (3) **gap de cobertura condicional** (global vs lesão, por sequência, por carga lesional) com intervalos Clopper-Pearson; (4) **curva de confiabilidade** (cobertura empírica vs nominal) em uma grade de níveis; (5) **tamanho de efeito e IC sobre o delta pareado** (BCa, rank-biserial, d_z de Cohen), corrigindo o objeto estatístico do S5.9.
+As cinco análises são: (1) um quarto calibrador — **CQR normalizado** (localmente ponderado, Lei et al. 2018, Sec. 5.2) aplicado aos modelos B/C sem alterar a arquitetura, para isolar o mecanismo; (2) **fronteira de eficiência** (cobertura a largura igualada) para comparação justa entre métodos; (3) **gap de cobertura condicional** (global vs lesão, por sequência, por carga lesional) com intervalos Clopper-Pearson; (4) **curva de confiabilidade** (cobertura empírica vs nominal) em uma grade de níveis; (5) **tamanho de efeito e IC sobre o delta pareado** (BCa, rank-biserial, d_z de Cohen), corrigindo o objeto estatístico do S5.9. Em complemento, a Seção 4.6 testa a calibração Mondrian por sequência.
 
 **Achados principais:**
 
@@ -26,6 +26,8 @@ As cinco análises são: (1) um quarto calibrador — **CQR normalizado** (local
 4. **A magnitude do efeito da loss QR-Lesion (C vs B) é pequena; a da calibração é grande.** No delta pareado por slice, C supera B em Coverage_lesion, Width_lesion e ULAS_lesion com IC 95% BCa que exclui zero, porém com tamanho de efeito pequeno (d_z 0,19–0,26). Já a diferença ResM vs CQR em Coverage_lesion é grande (d_z 0,93). H4 (IoU_topk_lesion) permanece indistinguível de zero (IC inclui zero), consistente com o S5.9.
 
 5. **ULAS diverge da cobertura — evidência de validade de construto.** Em ULAS_lesion, os métodos CQR (B/C) superam o ResM (delta pareado A menos B = -0,021, d_z -0,77), apesar de o ResM cobrir mais. Cobertura e ULAS medem coisas diferentes: o ResM ganha em cobertura, o CQR ganha em alinhamento direcional. Isso reforça que o ULAS não é uma reformulação da cobertura.
+
+6. **Mondrian por sequência não conserta a lesão.** Calibrar `q` por sequência corrige a má-calibração global entre sequências do CQR aditivo, mas não reduz — e em AXT1 piora — a sub-cobertura em lesão (B: 0,612 → 0,579), porque o `q` por sequência é dominado pelos pixels de fundo. Para ResM e CQR normalizado é um no-op (a adaptatividade local já homogeneíza as sequências). Conclui-se que a sub-cobertura em lesão é intra-sequência (lesão vs fundo); a alavanca é a adaptatividade local ou um Mondrian por estrato lesão/fundo.
 
 **Interpretação geral.** A narrativa do trabalho fica mais precisa: em quantificação de incerteza pixelwise para regiões de lesão, o fator dominante da cobertura condicional é a adaptatividade local da calibração (não a arquitetura nem a loss); entre escalas locais, a magnitude de resíduo aprendida supera a largura quantílica em eficiência; e a sub-cobertura residual é dependente de sequência. A contribuição original (loss QR-Lesion, Grupo C) permanece válida com efeito pequeno e confiável, e o ULAS ganha validação por divergir da cobertura.
 
@@ -55,6 +57,10 @@ Sobre os `metrics_*.csv` do S5.8, agrega cobertura como proporção binomial exa
 
 Alinha os `metrics_*.csv` por (volume_id, slice_idx) e, por métrica e par (A-B, A-C, B-C), reporta a média do delta pareado, IC 95% BCa do delta (Efron & Tibshirani 1993), correlação rank-biserial pareada (tamanho de efeito do Wilcoxon, Kerby 2014) e d_z de Cohen pareado. Corrige o objeto estatístico do S5.9, que aplicou BCa sobre médias por grupo em vez de sobre o delta pareado. Implementação em `scripts/analyze_paired_deltas.py`.
 
+### 2.5 Mondrian por sequência
+
+Calibra um `q` por sequência (AXFLAIR/AXT1/AXT1POST) sobre o split cal e avalia no test, comparando ao esquema marginal (q único). Mondrian conformal (Vovk et al. 2005) entrega cobertura condicional ao estrato discreto. Implementação em `src/calibration/mondrian.py` e `scripts/analyze_mondrian_coverage.py`.
+
 ---
 
 ## 3. Validação do pipeline
@@ -81,7 +87,7 @@ O CQR normalizado, aplicado aos mesmos modelos B/C, eleva a cobertura em lesão 
 
 A leitura no nível 0.90 do item 4.1 esconde uma nuance que a fronteira de eficiência revela: o CQR normalizado só atinge cobertura alta porque alarga substancialmente os intervalos em lesão (Width_lesion 0,0725/0,0782 vs 0,0555 do ResM). Comparando a cobertura à largura igualada, a ordenação é **ResM > CQR aditivo > CQR normalizado**: para qualquer largura de intervalo em lesão, o ResM atinge a maior cobertura empírica. A figura `figures/efficiency_frontier.png` mostra a curva do ResM acima das demais em todo o eixo de largura.
 
-A interpretação é que a escala local do ResM, `u(x)`, treinada para prever diretamente a magnitude do resíduo, é uma variável de condicionamento mais eficiente, em lesão, do que a largura quantílica `w(x)` usada pelo CQR normalizado. Isso é coerente com Lei et al. (2018, Fig. 7), que demonstram que o esquema localmente ponderado pode resultar em intervalos mais largos quando a escala local não casa bem com a heteroscedasticidade real. A narrativa final do achado, portanto, não é "é só calibração", e sim: a cobertura condicional em lesão é governada pela adaptatividade local da calibração; entre escalas locais, a magnitude de resíduo aprendida supera a largura quantílica em eficiência.
+A interpretação é que a escala local do ResM, `u(x)`, treinada para prever diretamente a magnitude do resíduo, é uma variável de condicionamento mais eficiente, em lesão, do que a largura quantílica `w(x)` usada pelo CQR normalizado. Isso é coerente com Lei et al. (2018, Fig. 7), que demonstram que o esquema localmente ponderado pode resultar em intervalos mais largos quando a escala local não casa bem com a heteroscedasticidade real. A narrativa final do achado, portanto, não é \"é só calibração\", e sim: a cobertura condicional em lesão é governada pela adaptatividade local da calibração; entre escalas locais, a magnitude de resíduo aprendida supera a largura quantílica em eficiência.
 
 ### 4.3 Item 4 — confiabilidade (nominal vs empírico)
 
@@ -138,6 +144,28 @@ Dois fatos estruturais. Primeiro, o ResM redistribui largura: é mais estreito g
 
 A divergência entre cobertura e ULAS valida a métrica: em ULAS_lesion, B e C superam A (delta A-B = -0,021, d_z -0,77; delta A-C = -0,024, d_z -0,75), apesar de A cobrir mais. Cobertura e alinhamento direcional capturam aspectos distintos da qualidade da incerteza.
 
+### 4.6 Mondrian por sequência (resultado medido)
+
+Motivada pelo achado da Seção 4.4 (sub-cobertura concentrada em AXT1), foi testada a calibração Mondrian condicional à sequência (Vovk et al., 2005): um `q` por sequência (AXFLAIR/AXT1/AXT1POST) calibrado no split cal e avaliado no test, comparado ao esquema marginal (q único). Cobertura em lesão por sequência, micro, nível 0.90:
+
+| Calibrador | AXFLAIR (marg → mond) | AXT1 (marg → mond) | AXT1POST (marg → mond) |
+|---|---|---|---|
+| A · ResM (scaled) | 0,896 → 0,896 | 0,725 → 0,725 | 0,864 → 0,863 |
+| B · CQR aditivo | 0,774 → 0,802 | **0,612 → 0,579** | 0,870 → 0,842 |
+| C · CQR aditivo | 0,773 → 0,801 | **0,635 → 0,605** | 0,871 → 0,842 |
+| B · CQR normalizado | 0,923 → 0,922 | 0,769 → 0,771 | 0,880 → 0,881 |
+| C · CQR normalizado | 0,919 → 0,919 | 0,796 → 0,798 | 0,886 → 0,887 |
+
+Três resultados, todos negativos ou nulos quanto à hipótese de que o Mondrian por sequência corrigiria a lesão:
+
+Primeiro, o Mondrian por sequência **não** conserta a sub-cobertura em lesão e, no CQR aditivo, **piora AXT1** (B: 0,612 → 0,579; C: 0,635 → 0,605). A razão é mecânica: o `q` de cada sequência é calibrado sobre o pool global de pixels (dominado por fundo), e o pool de AXT1 pede um `q` menor que o marginal (B: 0,0082 vs 0,0103); o intervalo mais estreito reduz ainda mais a cobertura justamente nas lesões, que já eram o ponto cego. Conclui-se que a sub-cobertura em lesão é um fenômeno intra-sequência (lesão vs fundo), não entre sequências.
+
+Segundo, para o ResM e o CQR normalizado o Mondrian por sequência é praticamente um no-op: os `q` por sequência quase não diferem do marginal (A: 2,052-2,054 vs 2,053; cqr_norm B: 0,836-0,853 vs 0,843), enquanto no CQR aditivo eles variam cerca de 45% (AXFLAIR 0,0119 vs AXT1 0,0082). Ou seja, a calibração localmente adaptativa já absorve a heterogeneidade entre sequências — após normalizar pelo `u(x)` ou `w(x)`, os scores ficam homogêneos entre sequências e não resta heterogeneidade para o Mondrian explorar. É evidência adicional a favor do mecanismo da Seção 4.1.
+
+Terceiro, o Mondrian corrige a calibração global entre sequências do CQR aditivo (que estava sub-coberto em AXFLAIR, 0,848, e sobre-coberto em AXT1POST, 0,949, aproximando-se de 0,874 e 0,931), mas isso apenas redistribui largura sem beneficiar a lesão. Em AXT1 a cobertura global no test caiu (0,881 → 0,845), sinal de um deslocamento cal-test específico de AXT1: o `q` ajustado na calibração subcobre no teste.
+
+Implicação: a alavanca correta para a sub-cobertura em lesão não é condicionar por sequência, e sim (i) a adaptatividade local da calibração (Seção 4.1) ou (ii) Mondrian condicionado ao estrato lesão/fundo — que ataca a causa direta, com a ressalva de que pixels de lesão são raros (n menor, `q` mais incerto) e de que a garantia passa a ser condicional ao estrato lesão. Execução em `scripts/analyze_mondrian_coverage.py`; ilustração em `figures/mondrian_axt1.png`.
+
 ---
 
 ## 5. Ressalvas metodológicas
@@ -154,7 +182,7 @@ Os IC Clopper-Pearson do item 3 são muito estreitos (largura ~0,001–0,002) po
 
 ## 6. Interpretação e implicações para a tese
 
-As cinco análises convergem para uma narrativa mais precisa e mais defensável que a do S5 isolado. O achado mais forte do trabalho não é a loss QR-Lesion em si, mas a demonstração mecanística de que, em UQ pixelwise para lesão, a cobertura condicional é governada pela adaptatividade local da calibração (item 1), com a ressalva de que a forma da escala local importa e que a magnitude de resíduo aprendida do ResM é a mais eficiente (item 2). A contribuição original (Grupo C) permanece válida, com efeito pequeno e confiável (item 5), e o ULAS é validado por capturar um eixo — alinhamento direcional — ortogonal à cobertura (item 5). A sub-cobertura residual concentrada em AXT1 (item 3) é um achado clínico concreto que motiva calibração condicional por sequência.
+As cinco análises convergem para uma narrativa mais precisa e mais defensável que a do S5 isolado. O achado mais forte do trabalho não é a loss QR-Lesion em si, mas a demonstração mecanística de que, em UQ pixelwise para lesão, a cobertura condicional é governada pela adaptatividade local da calibração (item 1), com a ressalva de que a forma da escala local importa e que a magnitude de resíduo aprendida do ResM é a mais eficiente (item 2). A contribuição original (Grupo C) permanece válida, com efeito pequeno e confiável (item 5), e o ULAS é validado por capturar um eixo — alinhamento direcional — ortogonal à cobertura (item 5). A sub-cobertura residual concentrada em AXT1 (item 3) é um achado clínico concreto; a Seção 4.6 mostra que ela não se resolve por condicionamento à sequência, apontando para a adaptatividade local e o Mondrian por lesão como caminhos.
 
 Para o documento final do TCC, sugere-se: (i) promover a fronteira de eficiência (item 2) a figura principal; (ii) reposicionar a discussão do achado ResM como resultado mecanístico (itens 1–2) em vez de observação incidental; (iii) declarar macro como métrica primária com a ressalva da Seção 5.
 
@@ -162,7 +190,7 @@ Para o documento final do TCC, sugere-se: (i) promover a fronteira de eficiênci
 
 ## 7. Trabalho futuro
 
-- **Calibração condicional por sequência (Mondrian)**: dado o gap concentrado em AXT1 (item 3), calibrar `q` separadamente por sequência (e/ou por estrato lesão/não-lesão) deve reduzir a sub-cobertura específica de T1. Referência: Vovk et al. (2005); Romano et al. (2020). Custo: baixo a médio (recalibração, sem re-treino).
+- **Calibração condicional por lesão (Mondrian por estrato lesão/fundo)**: a Seção 4.6 mostrou que o Mondrian por sequência não corrige a sub-cobertura em lesão (e a piora em AXT1), por ser dominado pelos pixels de fundo. O passo natural é calibrar `q` condicionado ao estrato lesão/fundo, atacando a causa direta. Referência: Vovk et al. (2005); Romano et al. (2020). Custo: baixo a médio (recalibração, sem re-treino); ressalva: pixels de lesão são raros, então `q` em lesão é mais incerto, e a garantia passa a ser condicional ao estrato.
 - **ResM com loss lesion-aware**: cruzar a escala local mais eficiente (ResM) com a ponderação por região (loss QR-Lesion) — Caminho 3 do S5. Custo: médio a alto (re-treino).
 - **Inferência respeitando correlação espacial**: bootstrap em nível de slice ou de volume para o gap condicional, em vez de Clopper-Pearson por pixel (Seção 5.2).
 
@@ -203,6 +231,11 @@ python scripts/analyze_calibration_sweep.py --group C --calibrator cqr_norm  --c
 # Figuras + tabela 0.90
 python scripts/plot_calibration_extras.py --sweep-dir results --out-dir figures
 
+# Mondrian por sequencia (Secao 4.6): uma invocacao por grupo/calibrador
+python scripts/analyze_mondrian_coverage.py --group A --calibrator scaled --checkpoint <A/best.pt> --recons-dir <recons> --masks-dir <masks> --output results/mondrian_A_scaled.csv
+python scripts/analyze_mondrian_coverage.py --group B --calibrator cqr    --checkpoint <B/best.pt> --recons-dir <recons> --masks-dir <masks> --output results/mondrian_B_cqr.csv
+python scripts/analyze_mondrian_coverage.py --group C --calibrator cqr    --checkpoint <C/best.pt> --recons-dir <recons> --masks-dir <masks> --output results/mondrian_C_cqr.csv
+
 # Orquestracao completa no Kaggle: notebooks/kaggle_S5_extras.ipynb
 ```
 
@@ -212,7 +245,7 @@ Python 3.12; PyTorch 2.10; scipy >= 1.11 (BCa via `scipy.stats.bootstrap`); pand
 
 ### 8.6 Sementes
 
-Bootstrap BCa do delta pareado: seed 42 (`numpy.random.default_rng(42)`). Quantis empíricos da varredura: determinísticos (sem aleatoriedade).
+Bootstrap BCa do delta pareado: seed 42 (`numpy.random.default_rng(42)`). Quantis empíricos da varredura e da calibração Mondrian: determinísticos (sem aleatoriedade).
 
 ---
 
@@ -231,4 +264,4 @@ Bootstrap BCa do delta pareado: seed 42 (`numpy.random.default_rng(42)`). Quanti
 
 ---
 
-*Documento construído sobre as saídas reais executadas em 04/06/2026 (`summary_level090.csv`, `cond_cov.csv`, `paired.csv`, `sweep_*.csv`), geradas pelos scripts da branch feat/S5-extras. Os q_hat recomputados reproduzem a calibração S5.7, validando o pipeline.*
+*Documento construído sobre as saídas reais executadas em 04/06/2026 e 06/06/2026 (`summary_level090.csv`, `cond_cov.csv`, `paired.csv`, `sweep_*.csv`, `mondrian_*.csv`), geradas pelos scripts da branch feat/S5-extras. Os q_hat recomputados reproduzem a calibração S5.7, validando o pipeline.*
