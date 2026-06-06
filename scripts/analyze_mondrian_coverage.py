@@ -1,1 +1,290 @@
-"# Autor: Massanori\n# Data: 04/06/2026\n# Descri\u00e7\u00e3o: Calibra\u00e7\u00e3o e avalia\u00e7\u00e3o Mondrian por sequ\u00eancia, destino:\n#            scripts/analyze_mondrian_coverage.py. Para um (grupo, calibrador),\n#            calibra um q por sequ\u00eancia (AXFLAIR/AXT1/AXT1POST) sobre o split\n#            cal e avalia, no split test, a cobertura (global e em les\u00e3o) e a\n#            largura por sequ\u00eancia, comparando o esquema MARGINAL (q \u00fanico) com\n#            o MONDRIAN (q por sequ\u00eancia). Endere\u00e7a diretamente o achado do\n#            S5-extras item 3: sub-cobertura concentrada em AXT1.\n#            Recebe via CLI: --group {A,B,C}, --calibrator {scaled,cqr,cqr_norm},\n#            --checkpoint, --recons-dir (com cal/ e test/), --masks-dir,\n#            --alpha (default 0.10), --output. Gera: CSV tidy\n#            [scheme, stratum, q_hat, coverage_global, coverage_lesion,\n#            width_global, width_lesion, n_pixels_global, n_pixels_lesion,\n#            used_fallback] + JSON sum\u00e1rio com SHA-256 do checkpoint.\n#            Fundamentos: Vovk et al. (2005, Mondrian CP); Romano et al. (2019);\n#            Barber et al. (2021, limites da cobertura condicional).\n\n\"\"\"Calibra\u00e7\u00e3o Mondrian por sequ\u00eancia: marginal vs condicional ao estrato.\n\nPergunta cient\u00edfica\n--------------------\nA calibra\u00e7\u00e3o marginal entrega P(y in C(x)) >= 1 - alpha, mas o S5-extras\nmostrou sub-cobertura sistem\u00e1tica em AXT1. A calibra\u00e7\u00e3o Mondrian (um q por\nsequ\u00eancia) deve, por constru\u00e7\u00e3o, levar a cobertura *global por sequ\u00eancia* ao\nalvo. A quest\u00e3o emp\u00edrica \u00e9 se ela tamb\u00e9m reduz o gap *em les\u00e3o* dentro de cada\nsequ\u00eancia \u2014 em particular se recupera a cobertura de les\u00e3o em AXT1.\n\nProcedimento (para um grupo/calibrador):\n  1. (cal) acumula scores por sequ\u00eancia -> q_s (Mondrian) e q_marginal (pool).\n  2. (test) por slice, conhece a sequ\u00eancia; avalia cobertura/largura sob o q\n     marginal e sob o q_s da sequ\u00eancia, agregando por sequ\u00eancia e no total.\n\nSa\u00edda: linhas (scheme in {marginal, mondrian}) x (stratum in {ALL, AXFLAIR,\nAXT1, AXT1POST}). Comparar a coluna coverage_lesion entre os dois schemes por\nsequ\u00eancia responde \u00e0 pergunta.\n\nExemplo (uma linha):\n    python scripts/analyze_mondrian_coverage.py --group A --calibrator scaled --checkpoint <A/best.pt> --recons-dir <recons> --masks-dir <masks> --output results/mondrian_A_scaled.csv\n\nRefs:\n    Vovk, Gammerman & Shafer (2005). Algorithmic Learning in a Random World.\n    Romano, Patterson & Candes (2019). Conformalized Quantile Regression. NeurIPS.\n    Barber et al. (2021). The limits of distribution-free conditional predictive inference.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nimport csv\nimport hashlib\nimport json\nimport logging\nimport sys\nfrom collections import defaultdict\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nimport numpy as np\nimport torch\nfrom torch.utils.data import DataLoader\n\nROOT = Path(__file__).resolve().parent.parent\nif str(ROOT) not in sys.path:\n    sys.path.insert(0, str(ROOT))\n\nfrom src import config as cfg  # noqa: E402\nfrom src.calibration.adaptive_cqr import DEFAULT_EPS  # noqa: E402\nfrom src.calibration.mondrian import (  # noqa: E402\n    score_and_widths, empirical_conformal_quantile, mondrian_quantiles,\n)\nfrom src.data import ReconsSliceDataset  # noqa: E402\nfrom src.models import QuantileRegressionModule, ResidualMagnitudeModule  # noqa: E402\nfrom src.training import load_checkpoint  # noqa: E402\n\nlogging.basicConfig(level=logging.INFO,\n                    format='%(asctime)s %(levelname)s %(name)s: %(message)s')\nlogger = logging.getLogger('mondrian_coverage')\n\nCSV_FIELDS = [\n    'scheme', 'stratum', 'group', 'calibrator', 'alpha', 'q_hat',\n    'coverage_global', 'coverage_lesion', 'width_global', 'width_lesion',\n    'n_pixels_global', 'n_pixels_lesion', 'used_fallback',\n]\nMIN_N_STRATUM = 50_000  # abaixo disso, estrato usa o q marginal (inst\u00e1vel)\n\n\ndef parse_args() -> argparse.Namespace:\n    p = argparse.ArgumentParser(description='Calibra\u00e7\u00e3o Mondrian por sequ\u00eancia.')\n    p.add_argument('--group', required=True, choices=['A', 'B', 'C'])\n    p.add_argument('--calibrator', required=True, choices=['scaled', 'cqr', 'cqr_norm'])\n    p.add_argument('--checkpoint', type=Path, required=True)\n    p.add_argument('--recons-dir', type=Path, default=None)\n    p.add_argument('--masks-dir', type=Path, required=True)\n    p.add_argument('--output', type=Path, required=True)\n    p.add_argument('--alpha', type=float, default=0.10)\n    p.add_argument('--eps', type=float, default=DEFAULT_EPS)\n    p.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda'])\n    p.add_argument('--num-workers', type=int, default=2)\n    p.add_argument('--chans', type=int, default=32)\n    p.add_argument('--num-pool-layers', type=int, default=4)\n    p.add_argument('--log-every', type=int, default=100)\n    return p.parse_args()\n\n\ndef compute_sha256(path: Path) -> str:\n    h = hashlib.sha256()\n    with path.open('rb') as f:\n        for chunk in iter(lambda: f.read(8192), b''):\n            h.update(chunk)\n    return h.hexdigest()\n\n\ndef resolve_device(arg: str) -> str:\n    if arg == 'auto':\n        return 'cuda' if torch.cuda.is_available() else 'cpu'\n    if arg == 'cuda' and not torch.cuda.is_available():\n        raise RuntimeError('CUDA solicitado mas indispon\u00edvel.')\n    return arg\n\n\ndef _validate(group, calibrator):\n    if group == 'A' and calibrator != 'scaled':\n        raise ValueError('Grupo A admite apenas --calibrator scaled.')\n    if group in ('B', 'C') and calibrator == 'scaled':\n        raise ValueError('Grupos B/C n\u00e3o admitem --calibrator scaled.')\n\n\ndef _seq_of(batch) -> str:\n    s = batch['sequence']\n    if isinstance(s, (list, tuple)):\n        s = s[0]\n    return str(s)\n\n\ndef main() -> int:\n    args = parse_args()\n    try:\n        _validate(args.group, args.calibrator)\n    except ValueError as e:\n        logger.error(str(e)); return 4\n    if not args.checkpoint.is_file():\n        logger.error(f'Checkpoint ausente: {args.checkpoint}'); return 2\n    try:\n        device = resolve_device(args.device)\n    except RuntimeError as e:\n        logger.error(str(e)); return 3\n\n    recons_root = (args.recons_dir or cfg.recons_dir()).expanduser().resolve()\n    cal_dir, test_dir = recons_root / 'cal', recons_root / 'test'\n    masks_dir = args.masks_dir.expanduser().resolve()\n    for d in (cal_dir, test_dir, masks_dir):\n        if not d.is_dir():\n            logger.error(f'Diret\u00f3rio ausente: {d}'); return 2\n\n    ckpt_sha = compute_sha256(args.checkpoint)\n    logger.info(f'Device={device} | alpha={args.alpha} | ckpt={ckpt_sha[:16]}...')\n\n    if args.group == 'A':\n        module = ResidualMagnitudeModule(chans=args.chans, num_pool_layers=args.num_pool_layers)\n    else:\n        module = QuantileRegressionModule(chans=args.chans, num_pool_layers=args.num_pool_layers)\n    load_checkpoint(args.checkpoint, module, device=device)\n    module = module.to(device).eval()\n\n    # ---- PASS 1 (cal): scores por sequ\u00eancia + pool marginal ----\n    cal_ds = ReconsSliceDataset(cal_dir, masks_dir=masks_dir)\n    cal_loader = DataLoader(cal_ds, batch_size=1, shuffle=False,\n                            num_workers=args.num_workers, pin_memory=(device == 'cuda'))\n    logger.info(f'[cal] {len(cal_ds)} slices')\n    scores_by_seq = defaultdict(list)\n    with torch.no_grad():\n        for batch in cal_loader:\n            recon = batch['recon'].to(device, non_blocking=True)\n            target = batch['target'].to(device, non_blocking=True)\n            out = module(recon)\n            s, _, _ = score_and_widths(args.calibrator, out, recon, target, args.eps)\n            scores_by_seq[_seq_of(batch)].append(s.detach().cpu().flatten().to(torch.float64).numpy())\n\n    scores_by_seq = {k: np.concatenate(v) for k, v in scores_by_seq.items()}\n    all_scores = np.concatenate(list(scores_by_seq.values()))\n    q_marginal = empirical_conformal_quantile(all_scores, args.alpha)\n    q_mondrian = mondrian_quantiles(scores_by_seq, args.alpha,\n                                    min_n=MIN_N_STRATUM, fallback_q=q_marginal)\n    logger.info(f'[cal] q_marginal={q_marginal:.6f} | '\n                f'q_mondrian={ {k: round(v[\"q_hat\"], 6) for k, v in q_mondrian.items()} }')\n\n    # ---- PASS 2 (test): cobertura/largura por (scheme, sequ\u00eancia) ----\n    # acumuladores: chave (scheme, stratum) -> dict de somas\n    acc = defaultdict(lambda: {'cov_g': 0.0, 'cov_l': 0.0, 'n_g': 0, 'n_l': 0,\n                               'bw_g': 0.0, 'bw_l': 0.0, 'sc_g': 0.0, 'sc_l': 0.0})\n\n    def add(scheme, stratum, score, bw, sc, mask, q):\n        a = acc[(scheme, stratum)]\n        cov = score <= q\n        a['cov_g'] += float(cov.sum()); a['n_g'] += score.size\n        a['bw_g'] += float(bw.sum()); a['sc_g'] += float(sc.sum())\n        if mask.any():\n            a['cov_l'] += float(cov[mask].sum()); a['n_l'] += int(mask.sum())\n            a['bw_l'] += float(bw[mask].sum()); a['sc_l'] += float(sc[mask].sum())\n\n    test_ds = ReconsSliceDataset(test_dir, masks_dir=masks_dir)\n    test_loader = DataLoader(test_ds, batch_size=1, shuffle=False,\n                             num_workers=args.num_workers, pin_memory=(device == 'cuda'))\n    logger.info(f'[test] {len(test_ds)} slices')\n    with torch.no_grad():\n        for i, batch in enumerate(test_loader):\n            recon = batch['recon'].to(device, non_blocking=True)\n            target = batch['target'].to(device, non_blocking=True)\n            mask_t = batch['lesion_mask'].to(device, non_blocking=True)\n            seq = _seq_of(batch)\n            out = module(recon)\n            s, bw, sc = score_and_widths(args.calibrator, out, recon, target, args.eps)\n            s = s.detach().reshape(-1).to(torch.float64).cpu().numpy()\n            bw = bw.detach().reshape(-1).to(torch.float64).cpu().numpy()\n            sc = sc.detach().reshape(-1).to(torch.float64).cpu().numpy()\n            m = (mask_t.detach().reshape(-1) > 0.5).cpu().numpy()\n\n            q_seq = q_mondrian.get(seq, {'q_hat': q_marginal})['q_hat']\n            # marginal: agrega no total (ALL) e por sequ\u00eancia\n            add('marginal', 'ALL', s, bw, sc, m, q_marginal)\n            add('marginal', seq, s, bw, sc, m, q_marginal)\n            # mondrian: q por sequ\u00eancia\n            add('mondrian', 'ALL', s, bw, sc, m, q_seq)\n            add('mondrian', seq, s, bw, sc, m, q_seq)\n            if (i + 1) % args.log_every == 0:\n                logger.info(f'  [test {i + 1}/{len(test_ds)}]')\n\n    # ---- montar linhas ----\n    def q_for(scheme, stratum):\n        if scheme == 'marginal':\n            return q_marginal, False\n        if stratum == 'ALL':\n            return float('nan'), False  # mondrian ALL usa q vari\u00e1vel por slice\n        info = q_mondrian.get(stratum, {'q_hat': q_marginal, 'used_fallback': True})\n        return info['q_hat'], info.get('used_fallback', False)\n\n    rows = []\n    for (scheme, stratum), a in sorted(acc.items()):\n        q_hat, fb = q_for(scheme, stratum)\n        cov_g = a['cov_g'] / a['n_g'] if a['n_g'] else float('nan')\n        cov_l = a['cov_l'] / a['n_l'] if a['n_l'] else float('nan')\n        # largura: precisa do q por pixel; para ALL-mondrian \u00e9 vari\u00e1vel, ent\u00e3o\n        # reportamos largura apenas onde q \u00e9 \u00fanico (marginal, ou mondrian por seq)\n        if scheme == 'mondrian' and stratum == 'ALL':\n            w_g = w_l = float('nan')\n        else:\n            w_g = (a['bw_g'] + 2.0 * q_hat * a['sc_g']) / a['n_g'] if a['n_g'] else float('nan')\n            w_l = (a['bw_l'] + 2.0 * q_hat * a['sc_l']) / a['n_l'] if a['n_l'] else float('nan')\n        rows.append({\n            'scheme': scheme, 'stratum': stratum, 'group': args.group,\n            'calibrator': args.calibrator, 'alpha': args.alpha, 'q_hat': q_hat,\n            'coverage_global': cov_g, 'coverage_lesion': cov_l,\n            'width_global': w_g, 'width_lesion': w_l,\n            'n_pixels_global': a['n_g'], 'n_pixels_lesion': a['n_l'],\n            'used_fallback': fb,\n        })\n\n    args.output.parent.mkdir(parents=True, exist_ok=True)\n    with args.output.open('w', newline='', encoding='utf-8') as f:\n        w = csv.DictWriter(f, fieldnames=CSV_FIELDS)\n        w.writeheader(); w.writerows(rows)\n    logger.info(f'CSV salvo: {args.output} ({len(rows)} linhas)')\n\n    args.output.with_suffix('.summary.json').write_text(json.dumps({\n        'group': args.group, 'calibrator': args.calibrator, 'alpha': args.alpha,\n        'checkpoint_path': str(args.checkpoint), 'checkpoint_sha256': ckpt_sha,\n        'recons_root': str(recons_root), 'masks_dir': str(masks_dir),\n        'q_marginal': q_marginal,\n        'q_mondrian': {k: v['q_hat'] for k, v in q_mondrian.items()},\n        'mondrian_n_pixels': {k: v['n_pixels'] for k, v in q_mondrian.items()},\n        'cal_n_slices': len(cal_ds), 'test_n_slices': len(test_ds),\n        'created_at': datetime.now(timezone.utc).isoformat(),\n    }, indent=2), encoding='utf-8')\n\n    # resumo leg\u00edvel: foco no gap em les\u00e3o por sequ\u00eancia, marginal vs mondrian\n    logger.info('=' * 64)\n    logger.info(f'COBERTURA EM LES\u00c3O por sequ\u00eancia | grupo {args.group} / {args.calibrator}')\n    seqs = sorted({st for (_, st) in acc if st != 'ALL'})\n    for st in seqs:\n        m = acc[('marginal', st)]; mo = acc[('mondrian', st)]\n        cm = m['cov_l'] / m['n_l'] if m['n_l'] else float('nan')\n        cmo = mo['cov_l'] / mo['n_l'] if mo['n_l'] else float('nan')\n        logger.info(f'  {st:>10}: marginal={cm:.4f} -> mondrian={cmo:.4f} '\n                    f'(q_seq={q_mondrian.get(st, {}).get(\"q_hat\", float(\"nan\")):.5f})')\n    logger.info('=' * 64)\n    return 0\n\n\nif __name__ == '__main__':\n    sys.exit(main())\n"
+# Autor: Massanori
+# Data: 04/06/2026
+# Descrição: Calibração e avaliação Mondrian por sequência, destino:
+#            scripts/analyze_mondrian_coverage.py. Para um (grupo, calibrador),
+#            calibra um q por sequência (AXFLAIR/AXT1/AXT1POST) sobre o split
+#            cal e avalia, no split test, a cobertura (global e em lesão) e a
+#            largura por sequência, comparando o esquema MARGINAL (q único) com
+#            o MONDRIAN (q por sequência). Endereça diretamente o achado do
+#            S5-extras item 3: sub-cobertura concentrada em AXT1.
+#            Recebe via CLI: --group {A,B,C}, --calibrator {scaled,cqr,cqr_norm},
+#            --checkpoint, --recons-dir (com cal/ e test/), --masks-dir,
+#            --alpha (default 0.10), --output. Gera: CSV tidy
+#            [scheme, stratum, q_hat, coverage_global, coverage_lesion,
+#            width_global, width_lesion, n_pixels_global, n_pixels_lesion,
+#            used_fallback] + JSON sumário com SHA-256 do checkpoint.
+#            Fundamentos: Vovk et al. (2005, Mondrian CP); Romano et al. (2019);
+#            Barber et al. (2021, limites da cobertura condicional).
+
+"""Calibração Mondrian por sequência: marginal vs condicional ao estrato.
+
+Pergunta científica
+--------------------
+A calibração marginal entrega P(y in C(x)) >= 1 - alpha, mas o S5-extras
+mostrou sub-cobertura sistemática em AXT1. A calibração Mondrian (um q por
+sequência) deve, por construção, levar a cobertura *global por sequência* ao
+alvo. A questão empírica é se ela também reduz o gap *em lesão* dentro de cada
+sequência — em particular se recupera a cobertura de lesão em AXT1.
+
+Procedimento (para um grupo/calibrador):
+  1. (cal) acumula scores por sequência -> q_s (Mondrian) e q_marginal (pool).
+  2. (test) por slice, conhece a sequência; avalia cobertura/largura sob o q
+     marginal e sob o q_s da sequência, agregando por sequência e no total.
+
+Saída: linhas (scheme in {marginal, mondrian}) x (stratum in {ALL, AXFLAIR,
+AXT1, AXT1POST}). Comparar a coluna coverage_lesion entre os dois schemes por
+sequência responde à pergunta.
+
+Exemplo (uma linha):
+    python scripts/analyze_mondrian_coverage.py --group A --calibrator scaled --checkpoint <A/best.pt> --recons-dir <recons> --masks-dir <masks> --output results/mondrian_A_scaled.csv
+
+Refs:
+    Vovk, Gammerman & Shafer (2005). Algorithmic Learning in a Random World.
+    Romano, Patterson & Candes (2019). Conformalized Quantile Regression. NeurIPS.
+    Barber et al. (2021). The limits of distribution-free conditional predictive inference.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+import logging
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src import config as cfg  # noqa: E402
+from src.calibration.adaptive_cqr import DEFAULT_EPS  # noqa: E402
+from src.calibration.mondrian import (  # noqa: E402
+    score_and_widths, empirical_conformal_quantile, mondrian_quantiles,
+)
+from src.data import ReconsSliceDataset  # noqa: E402
+from src.models import QuantileRegressionModule, ResidualMagnitudeModule  # noqa: E402
+from src.training import load_checkpoint  # noqa: E402
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+logger = logging.getLogger('mondrian_coverage')
+
+CSV_FIELDS = [
+    'scheme', 'stratum', 'group', 'calibrator', 'alpha', 'q_hat',
+    'coverage_global', 'coverage_lesion', 'width_global', 'width_lesion',
+    'n_pixels_global', 'n_pixels_lesion', 'used_fallback',
+]
+MIN_N_STRATUM = 50_000  # abaixo disso, estrato usa o q marginal (instável)
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description='Calibração Mondrian por sequência.')
+    p.add_argument('--group', required=True, choices=['A', 'B', 'C'])
+    p.add_argument('--calibrator', required=True, choices=['scaled', 'cqr', 'cqr_norm'])
+    p.add_argument('--checkpoint', type=Path, required=True)
+    p.add_argument('--recons-dir', type=Path, default=None)
+    p.add_argument('--masks-dir', type=Path, required=True)
+    p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--alpha', type=float, default=0.10)
+    p.add_argument('--eps', type=float, default=DEFAULT_EPS)
+    p.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda'])
+    p.add_argument('--num-workers', type=int, default=2)
+    p.add_argument('--chans', type=int, default=32)
+    p.add_argument('--num-pool-layers', type=int, default=4)
+    p.add_argument('--log-every', type=int, default=100)
+    return p.parse_args()
+
+
+def compute_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def resolve_device(arg: str) -> str:
+    if arg == 'auto':
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+    if arg == 'cuda' and not torch.cuda.is_available():
+        raise RuntimeError('CUDA solicitado mas indisponível.')
+    return arg
+
+
+def _validate(group, calibrator):
+    if group == 'A' and calibrator != 'scaled':
+        raise ValueError('Grupo A admite apenas --calibrator scaled.')
+    if group in ('B', 'C') and calibrator == 'scaled':
+        raise ValueError('Grupos B/C não admitem --calibrator scaled.')
+
+
+def _seq_of(batch) -> str:
+    s = batch['sequence']
+    if isinstance(s, (list, tuple)):
+        s = s[0]
+    return str(s)
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        _validate(args.group, args.calibrator)
+    except ValueError as e:
+        logger.error(str(e)); return 4
+    if not args.checkpoint.is_file():
+        logger.error(f'Checkpoint ausente: {args.checkpoint}'); return 2
+    try:
+        device = resolve_device(args.device)
+    except RuntimeError as e:
+        logger.error(str(e)); return 3
+
+    recons_root = (args.recons_dir or cfg.recons_dir()).expanduser().resolve()
+    cal_dir, test_dir = recons_root / 'cal', recons_root / 'test'
+    masks_dir = args.masks_dir.expanduser().resolve()
+    for d in (cal_dir, test_dir, masks_dir):
+        if not d.is_dir():
+            logger.error(f'Diretório ausente: {d}'); return 2
+
+    ckpt_sha = compute_sha256(args.checkpoint)
+    logger.info(f'Device={device} | alpha={args.alpha} | ckpt={ckpt_sha[:16]}...')
+
+    if args.group == 'A':
+        module = ResidualMagnitudeModule(chans=args.chans, num_pool_layers=args.num_pool_layers)
+    else:
+        module = QuantileRegressionModule(chans=args.chans, num_pool_layers=args.num_pool_layers)
+    load_checkpoint(args.checkpoint, module, device=device)
+    module = module.to(device).eval()
+
+    # ---- PASS 1 (cal): scores por sequência + pool marginal ----
+    cal_ds = ReconsSliceDataset(cal_dir, masks_dir=masks_dir)
+    cal_loader = DataLoader(cal_ds, batch_size=1, shuffle=False,
+                            num_workers=args.num_workers, pin_memory=(device == 'cuda'))
+    logger.info(f'[cal] {len(cal_ds)} slices')
+    scores_by_seq = defaultdict(list)
+    with torch.no_grad():
+        for batch in cal_loader:
+            recon = batch['recon'].to(device, non_blocking=True)
+            target = batch['target'].to(device, non_blocking=True)
+            out = module(recon)
+            s, _, _ = score_and_widths(args.calibrator, out, recon, target, args.eps)
+            scores_by_seq[_seq_of(batch)].append(s.detach().cpu().flatten().to(torch.float64).numpy())
+
+    scores_by_seq = {k: np.concatenate(v) for k, v in scores_by_seq.items()}
+    all_scores = np.concatenate(list(scores_by_seq.values()))
+    q_marginal = empirical_conformal_quantile(all_scores, args.alpha)
+    q_mondrian = mondrian_quantiles(scores_by_seq, args.alpha,
+                                    min_n=MIN_N_STRATUM, fallback_q=q_marginal)
+    logger.info(f'[cal] q_marginal={q_marginal:.6f} | '
+                f'q_mondrian={ {k: round(v["q_hat"], 6) for k, v in q_mondrian.items()} }')
+
+    # ---- PASS 2 (test): cobertura/largura por (scheme, sequência) ----
+    # acumuladores: chave (scheme, stratum) -> dict de somas
+    acc = defaultdict(lambda: {'cov_g': 0.0, 'cov_l': 0.0, 'n_g': 0, 'n_l': 0,
+                               'bw_g': 0.0, 'bw_l': 0.0, 'sc_g': 0.0, 'sc_l': 0.0})
+
+    def add(scheme, stratum, score, bw, sc, mask, q):
+        a = acc[(scheme, stratum)]
+        cov = score <= q
+        a['cov_g'] += float(cov.sum()); a['n_g'] += score.size
+        a['bw_g'] += float(bw.sum()); a['sc_g'] += float(sc.sum())
+        if mask.any():
+            a['cov_l'] += float(cov[mask].sum()); a['n_l'] += int(mask.sum())
+            a['bw_l'] += float(bw[mask].sum()); a['sc_l'] += float(sc[mask].sum())
+
+    test_ds = ReconsSliceDataset(test_dir, masks_dir=masks_dir)
+    test_loader = DataLoader(test_ds, batch_size=1, shuffle=False,
+                             num_workers=args.num_workers, pin_memory=(device == 'cuda'))
+    logger.info(f'[test] {len(test_ds)} slices')
+    with torch.no_grad():
+        for i, batch in enumerate(test_loader):
+            recon = batch['recon'].to(device, non_blocking=True)
+            target = batch['target'].to(device, non_blocking=True)
+            mask_t = batch['lesion_mask'].to(device, non_blocking=True)
+            seq = _seq_of(batch)
+            out = module(recon)
+            s, bw, sc = score_and_widths(args.calibrator, out, recon, target, args.eps)
+            s = s.detach().reshape(-1).to(torch.float64).cpu().numpy()
+            bw = bw.detach().reshape(-1).to(torch.float64).cpu().numpy()
+            sc = sc.detach().reshape(-1).to(torch.float64).cpu().numpy()
+            m = (mask_t.detach().reshape(-1) > 0.5).cpu().numpy()
+
+            q_seq = q_mondrian.get(seq, {'q_hat': q_marginal})['q_hat']
+            # marginal: agrega no total (ALL) e por sequência
+            add('marginal', 'ALL', s, bw, sc, m, q_marginal)
+            add('marginal', seq, s, bw, sc, m, q_marginal)
+            # mondrian: q por sequência
+            add('mondrian', 'ALL', s, bw, sc, m, q_seq)
+            add('mondrian', seq, s, bw, sc, m, q_seq)
+            if (i + 1) % args.log_every == 0:
+                logger.info(f'  [test {i + 1}/{len(test_ds)}]')
+
+    # ---- montar linhas ----
+    def q_for(scheme, stratum):
+        if scheme == 'marginal':
+            return q_marginal, False
+        if stratum == 'ALL':
+            return float('nan'), False  # mondrian ALL usa q variável por slice
+        info = q_mondrian.get(stratum, {'q_hat': q_marginal, 'used_fallback': True})
+        return info['q_hat'], info.get('used_fallback', False)
+
+    rows = []
+    for (scheme, stratum), a in sorted(acc.items()):
+        q_hat, fb = q_for(scheme, stratum)
+        cov_g = a['cov_g'] / a['n_g'] if a['n_g'] else float('nan')
+        cov_l = a['cov_l'] / a['n_l'] if a['n_l'] else float('nan')
+        # largura: precisa do q por pixel; para ALL-mondrian é variável, então
+        # reportamos largura apenas onde q é único (marginal, ou mondrian por seq)
+        if scheme == 'mondrian' and stratum == 'ALL':
+            w_g = w_l = float('nan')
+        else:
+            w_g = (a['bw_g'] + 2.0 * q_hat * a['sc_g']) / a['n_g'] if a['n_g'] else float('nan')
+            w_l = (a['bw_l'] + 2.0 * q_hat * a['sc_l']) / a['n_l'] if a['n_l'] else float('nan')
+        rows.append({
+            'scheme': scheme, 'stratum': stratum, 'group': args.group,
+            'calibrator': args.calibrator, 'alpha': args.alpha, 'q_hat': q_hat,
+            'coverage_global': cov_g, 'coverage_lesion': cov_l,
+            'width_global': w_g, 'width_lesion': w_l,
+            'n_pixels_global': a['n_g'], 'n_pixels_lesion': a['n_l'],
+            'used_fallback': fb,
+        })
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open('w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        w.writeheader(); w.writerows(rows)
+    logger.info(f'CSV salvo: {args.output} ({len(rows)} linhas)')
+
+    args.output.with_suffix('.summary.json').write_text(json.dumps({
+        'group': args.group, 'calibrator': args.calibrator, 'alpha': args.alpha,
+        'checkpoint_path': str(args.checkpoint), 'checkpoint_sha256': ckpt_sha,
+        'recons_root': str(recons_root), 'masks_dir': str(masks_dir),
+        'q_marginal': q_marginal,
+        'q_mondrian': {k: v['q_hat'] for k, v in q_mondrian.items()},
+        'mondrian_n_pixels': {k: v['n_pixels'] for k, v in q_mondrian.items()},
+        'cal_n_slices': len(cal_ds), 'test_n_slices': len(test_ds),
+        'created_at': datetime.now(timezone.utc).isoformat(),
+    }, indent=2), encoding='utf-8')
+
+    # resumo legível: foco no gap em lesão por sequência, marginal vs mondrian
+    logger.info('=' * 64)
+    logger.info(f'COBERTURA EM LESÃO por sequência | grupo {args.group} / {args.calibrator}')
+    seqs = sorted({st for (_, st) in acc if st != 'ALL'})
+    for st in seqs:
+        m = acc[('marginal', st)]; mo = acc[('mondrian', st)]
+        cm = m['cov_l'] / m['n_l'] if m['n_l'] else float('nan')
+        cmo = mo['cov_l'] / mo['n_l'] if mo['n_l'] else float('nan')
+        logger.info(f'  {st:>10}: marginal={cm:.4f} -> mondrian={cmo:.4f} '
+                    f'(q_seq={q_mondrian.get(st, {}).get("q_hat", float("nan")):.5f})')
+    logger.info('=' * 64)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
