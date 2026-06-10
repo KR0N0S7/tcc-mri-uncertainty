@@ -68,10 +68,13 @@ Detalhes completos, mecânica e discussão das limitações em **[docs/S5.md](do
 │   ├── generate_lesion_masks.py      # Geração das máscaras Y-flipped
 │   ├── download_checkpoint.py        # Fetch do brain_leaderboard.pt
 │   ├── precompute_reconstructions.py # Pipeline batch resumível (S4)
-│   ├── train.py                      # Treino do quantile network (S5.2-5.4)
+│   ├── train_resm.py                 # Treino Grupo A — ResM (S5.2)
+│   ├── train_qr.py                   # Treino Grupo B — QR (S5.3)
+│   ├── train_qr_lesion.py            # Treino Grupo C — QR-Lesion (S5.4)
 │   ├── calibrate.py                  # Calibração conforme (S5.7)
 │   ├── compute_metrics.py            # Métricas por slice (S5.8)
 │   ├── analyze_S5_9.py               # Análise estatística + docs/S5.md (S5.9)
+│   ├── reproduce_results.py          # Orquestrador S5.7→S5.8→S5.9 (1 comando)
 │   └── print_metrics_table.py        # Standalone p/ regenerar tabela do S5.8
 ├── notebooks/                        # Runners Kaggle T4
 │   ├── kaggle_precompute.ipynb       # S4
@@ -147,9 +150,12 @@ python scripts/precompute_reconstructions.py \
     --split val --output-dir <recons_root>
 
 # 4. S5.2-5.4 — Treinar (uma vez por grupo, ~6h em T4 cada)
-python scripts/train.py --group A --output-dir <ckpt_A>
-python scripts/train.py --group B --output-dir <ckpt_B>
-python scripts/train.py --group C --output-dir <ckpt_C>
+#    Grupos A e B não usam máscaras; o Grupo C exige --masks-dir.
+python scripts/train_resm.py      --device cuda --recons-dir <recons_root> --run-dir <ckpt_A>
+python scripts/train_qr.py        --device cuda --recons-dir <recons_root> --run-dir <ckpt_B>
+python scripts/train_qr_lesion.py --device cuda --recons-dir <recons_root> \
+    --masks-dir <masks_root> --run-dir <ckpt_C>
+# (Grupo C aceita --lambda-lesion, default 5.0)
 
 # 5. S5.7-5.9 — Calibração, métricas e análise estatística
 python scripts/calibrate.py --group A \
@@ -171,6 +177,22 @@ python scripts/analyze_S5_9.py \
     --output-json docs/figures/s5_9_analysis.json \
     --output-md docs/S5.md
 ```
+
+### Atalho: reproduzir o passo 5 num comando
+
+Em vez de rodar calibração, métricas e análise manualmente para cada grupo, o orquestrador `scripts/reproduce_results.py` encadeia tudo (S5.7 → S5.8 → S5.9) a partir dos checkpoints já treinados:
+
+```bash
+python scripts/reproduce_results.py \
+    --ckpt-a <ckpt_A>/best.pt \
+    --ckpt-b <ckpt_B>/best.pt \
+    --ckpt-c <ckpt_C>/best.pt \
+    --recons-dir <recons_root> \
+    --masks-dir  <masks_root> \
+    --work-dir   results/repro
+```
+
+Gera `results/repro/q_hat_[A,B,C].json`, `results/repro/metrics_[A,B,C].csv`, `docs/figures/s5_9_analysis.json` e `docs/S5.md`. Cada etapa é resumível (pula saídas já existentes; use `--force` para recomputar; `--skip-calibrate` / `--skip-metrics` / `--skip-analyze` para rodar etapas isoladas).
 
 ## Dependências externas (não versionadas)
 
