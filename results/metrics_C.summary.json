@@ -1,0 +1,85 @@
+{
+  "group": "C",
+  "method": "CQR",
+  "q_hat": 0.010268524289131165,
+  "alpha": 0.1,
+  "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-qr-lesion-checkpoints/best.pt",
+  "checkpoint_sha256": "fa5198f832acd58fc8f0ed00a244dd92a86a8e3d2c7b7a8e57d0b20bc8cc58fe",
+  "qhat_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-conformal-qhats/q_hat_C.json",
+  "qhat_sha256_from_json": "fa5198f832acd58fc8f0ed00a244dd92a86a8e3d2c7b7a8e57d0b20bc8cc58fe",
+  "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+  "masks_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-lesion-masks",
+  "top_pct": 0.05,
+  "n_perms_ulas": 10,
+  "n_slices_total": 736,
+  "n_slices_with_lesion": 362,
+  "metrics_summary": {
+    "coverage_global": {
+      "mean": 0.87606281042099,
+      "std": 0.08910346031188965,
+      "median": 0.8969433307647705,
+      "n_valid": 736
+    },
+    "coverage_lesion": {
+      "mean": 0.7858306765556335,
+      "std": 0.10816065967082977,
+      "median": 0.7976190447807312,
+      "n_valid": 362
+    },
+    "mean_width_global": {
+      "mean": 0.03598063439130783,
+      "std": 0.007386865094304085,
+      "median": 0.034454818814992905,
+      "n_valid": 736
+    },
+    "mean_width_lesion": {
+      "mean": 0.04564977064728737,
+      "std": 0.011101818643510342,
+      "median": 0.04421708732843399,
+      "n_valid": 362
+    },
+    "iou_topk_global": {
+      "mean": 0.15966059267520905,
+      "std": 0.04685153067111969,
+      "median": 0.154062882065773,
+      "n_valid": 736
+    },
+    "iou_topk_lesion": {
+      "mean": 0.07335084676742554,
+      "std": 0.04731333255767822,
+      "median": 0.0731707289814949,
+      "n_valid": 362
+    },
+    "ulas_lesion": {
+      "mean": 0.6062432527542114,
+      "std": 0.05357833951711655,
+      "median": 0.6131011247634888,
+      "n_valid": 362
+    },
+    "ulas_null_mean": {
+      "mean": 0.5916363000869751,
+      "std": 0.04224066436290741,
+      "median": 0.6050558686256409,
+      "n_valid": 362
+    },
+    "ulas_z_score": {
+      "mean": 2.6910500526428223,
+      "std": 3.1595351696014404,
+      "median": 1.9193294048309326,
+      "n_valid": 362
+    },
+    "mean_uncertainty": {
+      "mean": 0.007721793372184038,
+      "std": 0.0036934325471520424,
+      "median": 0.006958885118365288,
+      "n_valid": 736
+    },
+    "mean_error": {
+      "mean": 0.007995108142495155,
+      "std": 0.005634638015180826,
+      "median": 0.006631478201597929,
+      "n_valid": 736
+    }
+  },
+  "created_at": "2026-05-24T02:26:10.304634+00:00"
+}

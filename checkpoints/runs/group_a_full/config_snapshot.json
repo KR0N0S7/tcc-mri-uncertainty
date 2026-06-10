@@ -1,0 +1,75 @@
+{
+  "group": "A",
+  "run": "full",
+  "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+  "total_iters": 210000,
+  "training_base": {
+    "name": "training_base",
+    "scope": "Hiperparametros base compartilhados pelos Grupos A (ResM), B (QR) e C (QR-Lesion) no S5. Replicacao direta de Giannakopoulos et al. (2026, secao III.D) para garantir comparabilidade com o estado da arte e reproduzir Pearson ~0.91 e lambda_cal ~1.54 no Grupo B (validacao da replicacao, secao 4.1 do TCC).",
+    "decisoes_alinhadas": {
+      "D1_normalizacao": "max_val por volume (campo .npz do S4), aplicada em runtime no ReconsSliceDataset. Preserva exchangeability (Romano et al., 2019, secao 3.2).",
+      "D2_amostragem": "slice-wise (cada __getitem__ retorna 1 fatia 2D). Multiplica n_train de 213 volumes para ~3400 slices, viavel para 210k iters com batch=1.",
+      "D3_interface_loss": "assinatura (uncertainty_pred, recon, target, lesion_mask, **kwargs) compartilhada entre A/B/C. Grupos A e B ignoram lesion_mask (sample contem mascara de zeros).",
+      "D4_hiperparametros": "replicacao Giannakopoulos et al. (2026). Detalhamento abaixo.",
+      "D5_logging": "TensorBoard + CSV em paralelo; checkpoint a cada 10k iters COM optimizer.state_dict e scheduler.state_dict."
+    },
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08
+    },
+    "scheduler": {
+      "name": "warmup_linear",
+      "warmup_steps": 7500,
+      "total_steps_full": 210000,
+      "total_steps_smoke": 1000,
+      "description": "warmup linear de 0 ate lr nas primeiras 7500 iters, depois lr constante. Smoke test usa 1000 iters apenas para validar que loss diminui (ver scripts/smoke_train_*.py do S5.2)."
+    },
+    "training": {
+      "batch_size": 1,
+      "num_workers": 2,
+      "seed": 42,
+      "alpha": 0.1,
+      "nominal_coverage": 0.9,
+      "checkpoint_every": 10000,
+      "log_every": 100,
+      "max_iterations_mvp": 210000,
+      "max_iterations_smoke": 1000
+    },
+    "model": {
+      "in_chans": 1,
+      "out_chans": 1,
+      "chans": 32,
+      "num_pool_layers": 4,
+      "description": "fastmri.models.Unet com 32 canais e 4 pools. Grupo A usa 1 instancia (~7.75M params); Grupos B e C usam 2 instancias (lower + upper, ~15.5M params totais), conforme Giannakopoulos et al. (2026, secoes II.B.2 e II.B.3)."
+    },
+    "mvp": {
+      "groups": [
+        "A",
+        "B",
+        "C"
+      ],
+      "C_lambdas": [
+        5.0
+      ],
+      "total_runs": 3,
+      "gpu_hours_estimated": 36,
+      "target_delivery": "4a entrega: 09-16/06/2026",
+      "description": "MVP defensavel para a 4a entrega: A + B + C com lambda=5. Curva fina de ablation (lambda em {1, 3, 5, 10, 15}) fica para S11-S16 (16/06-27/07/2026) se o orcamento de GPU permitir."
+    },
+    "rationale": "AdamW preferido sobre Adam pelo decoupled weight decay (Loshchilov & Hutter, 2019), que evita interacao entre L2 regularization e lr scheduling. lr=3e-4 e warmup=7500 sao os valores reportados no artigo base. Seed=42 fixa entre os 3 grupos garante que diferencas observadas em pearson/coverage venham da loss, nao da inicializacao (Demsar, 2006, secao 3.2). alpha=0.10 (cobertura nominal 90%) e o valor padrao em CQR para reconstrucao acelerada de MRI.",
+    "refs": [
+      "Giannakopoulos, C. et al. (2026). Pixelwise Uncertainty Quantification of Accelerated MRI Reconstruction. arXiv:2601.13236.",
+      "Loshchilov, I.; Hutter, F. (2019). Decoupled Weight Decay Regularization. ICLR. arXiv:1711.05101.",
+      "Romano, Y.; Patterson, E.; Candes, E. (2019). Conformalized Quantile Regression. NeurIPS 32, 3543-3553.",
+      "Demsar, J. (2006). Statistical Comparisons of Classifiers over Multiple Data Sets. JMLR 7:1-30.",
+      "Angelopoulos, A. N.; Bates, S. (2023). Conformal Prediction: A Gentle Introduction. Foundations and Trends in ML 16(4):494-591.",
+      "Paszke, A. et al. (2019). PyTorch: An Imperative Style, High-Performance Deep Learning Library. NeurIPS 32."
+    ]
+  }
+}

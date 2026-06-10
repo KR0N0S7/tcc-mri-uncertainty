@@ -1,0 +1,18 @@
+{
+  "group": "A",
+  "method": "ScaledCP",
+  "q_hat": 2.0527451038360596,
+  "alpha": 0.1,
+  "n_pixels": 70759312,
+  "n_batches": 730,
+  "mean_score": 0.9970738887786865,
+  "checkpoint_path": "/kaggle/input/datasets/massanorikishi/tcc-mri-resm-checkpoints/tcc-mri-resm-checkpoints/best.pt",
+  "checkpoint_sha256": "9ef2fa8e4e85706e2c90cdedc26cfe85dbf73987c6438b6070505072b493aeda",
+  "recons_root": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x",
+  "cal_dir": "/kaggle/input/datasets/massanorikishi/tcc-mri-recons-varnet-brain-4x/cal",
+  "cal_n_slices": 730,
+  "masks_dir": null,
+  "chans": 32,
+  "num_pool_layers": 4,
+  "created_at": "2026-05-21T16:09:01.812623+00:00"
+}
